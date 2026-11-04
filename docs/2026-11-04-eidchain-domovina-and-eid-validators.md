@@ -10,6 +10,8 @@ Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-
 - Schedule: `block-timestamps` from 1, `authority-changes` and `eid-validators` from 3.
 - Blocks 1 and 2 are messages signed with Matija's eOI. Block 3 registers his first validator key, `69007f4b…` (i9). Block 4 (16:40) registers the Mac Mini key `0b26a5a7…` and is signed by `69007f4b`, which made it active. `0b26a5a7` is a candidate until it signs.
 - Voters after block 4: N=4 (3 genesis keys + Matija), window 2, rotation quorum 3. The genesis keys still hold the majority from one machine.
+- Block 5 (17:00) is a card-signed message, signed by genesis key `20a17442` on i9. The Mac Mini had the message too and did not cut: Matija's voter was still in the window from block 4, which shows the two keys counting as one voter.
+- **Why the Mac Mini key rarely gets to sign.** i9 holds 3 genesis keys and Matija's first key, so with a window of 2 it always has an eligible key and cuts every block. The Mac Mini cuts only when Matija's voter has left the window. At the earliest that is block 7, after a non-Matija block 6. Both nodes then cut at the same boundary, and the lowest hash wins, so the Mac Mini has about a 50% chance. Every block needs a pending message, which means a card signature, so a test takes two messages in two separate 10-minute slots, and may need repeating. This goes away once the genesis keys are rotated out.
 - Two public nodes: i9.local (`eidchain-i9.domovina.ai`, also serving the short `eidchain.domovina.ai` as an alias) and the Mac Mini ffhr.local (`eidchain-mini.domovina.ai`, tunnel `eidchain-mini` `1435a18d…`, same `/opt/eidchain` layout and uid 471).
 - `python3 -I scripts/chain-map.py --pdf` (on i9 with `SSL_CERT_FILE=/etc/ssl/cert.pem`: the python.org build has no CA certificates) draws the current nodes and keys into `docs/chain-map.md`.
 
@@ -53,7 +55,8 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - [x] Key `69007f4b…` active (block 4). Mac Mini node public, key `0b26a5a7…` registered.
 - [x] i9 advertises `eidchain-i9.domovina.ai` with the short name as alias, peer `eidchain-mini` configured. Both nodes report `signingKeys`; the hints only name the machines now.
 - [x] Alias fix deployed on both nodes (16:52 i9, 16:54 Mac Mini): each lists only the other, under its own name.
-- [ ] Check that `0b26a5a7` signs a block (needs a pending message, so a card signature) and that Matija's two keys take turns as one voter (the second may not sign while the first is in the window).
+- [x] The two keys count as one voter: the Mac Mini did not sign block 5 while `69007f4b` was in the window.
+- [ ] `0b26a5a7` signs its first block and becomes active. Needs a message for block 6 and another for block 7 (separate slots), then a won hash tie. See the explanation above.
 - [x] `join.sh`: `LISTEN`, default `127.0.0.1:8097`, checked before the build.
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
