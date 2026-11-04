@@ -2,7 +2,7 @@
 
 Status on 2026-11-04. Our own chain runs on the stepanic fork, at https://eidchain.domovina.ai/chain/. It tests what we want to propose upstream (ivoras/eidchain): `authority-changes` and `eid-validators`. The how is in the README sections "Key rotation", "eID validators" and "Deployment on macOS". This file holds the reasons, the traps and what is still open.
 
-Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-croatian-eoi-macos.md).
+Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-croatian-eoi-macos.md), [A Windows node, and what hardware a fleet of nodes needs](2026-11-04-windows-node-and-node-hardware.md).
 
 ## The live chain
 
@@ -61,5 +61,6 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
 - [ ] Back up the 3 genesis keys offline. Later, remove them by rotation once enough eID validators are counted.
+- [ ] Third node on Windows (`deploy/windows/join.ps1`), plan in the Windows/hardware doc.
 - [ ] PR to ivoras/eidchain with `authority-changes` and `eid-validators`, after the Mac Mini test.
 - [ ] Point 3 of the original plan (BFT finality) and peer bootstrap aren't started.
