@@ -799,3 +799,56 @@ func TestInfoReportsUptime(t *testing.T) {
 		t.Fatalf("uptime %d, started %d", info.UptimeSeconds, info.StartedAt)
 	}
 }
+
+// With authority-changes, an add is pooled and becomes ready at a majority of
+// the current keys; before the feature's height the pool refuses it.
+func TestRotationPoolAddsKeys(t *testing.T) {
+	var keys []chain.Signer
+	var auths []chain.Authority
+	for i := 0; i < 3; i++ {
+		k, _ := chain.GenerateKey()
+		id, _ := chain.KeyID(&k.PublicKey)
+		pub, _ := chain.EncodePublicKey(&k.PublicKey)
+		keys = append(keys, chain.Signer{ID: id, Key: k})
+		auths = append(auths, chain.Authority{PublicKey: pub})
+	}
+	p := testpki.New(t)
+	g, err := chain.NewGenesis("pool", auths, []string{p.RootPEM, p.InterPEM}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, err := chain.NewParams(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params.Features = chain.Schedule{chain.FeatureAuthorityChanges: chain.At(5)}
+	nk, _ := chain.GenerateKey()
+	npub, _ := chain.EncodePublicKey(&nk.PublicKey)
+	rot := chain.Rotation{Change: chain.KeyChange{Type: "add", Chain: g.Hash(), Seq: 0, NewKey: npub}}
+	sig, _ := chain.SignKeyChange(keys[0], rot.Change)
+	rot.AddSignature(sig)
+
+	rp := newRotationPool()
+	if _, _, _, err := rp.Add(params, chain.Parent{Height: 3, State: params.Initial}, rot); err == nil {
+		t.Fatal("add accepted below the feature's height")
+	}
+	parent := chain.Parent{Height: 4, State: params.Initial} // the next block, 5, has the feature
+	if _, n, _, err := rp.Add(params, parent, rot); err != nil || n != 1 {
+		t.Fatalf("first approval: %d %v", n, err)
+	}
+	if len(rp.Ready(params, parent)) != 0 {
+		t.Fatal("ready with 1 of 3 approvals")
+	}
+	sig, _ = chain.SignKeyChange(keys[1], rot.Change)
+	rot.AddSignature(sig)
+	if _, _, _, err := rp.Add(params, parent, rot); err != nil {
+		t.Fatal(err)
+	}
+	if r := rp.Ready(params, parent); len(r) != 1 || r[0].Change.Type != "add" {
+		t.Fatalf("not ready with 2 of 3 approvals: %+v", r)
+	}
+	rp.Prune(params, chain.Parent{Height: 5, State: params.Initial})
+	if len(rp.List()) != 1 {
+		t.Fatal("pruned a proposal that still applies")
+	}
+}

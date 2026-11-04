@@ -319,20 +319,24 @@ func (n *Node) handleExplorerAuthorities(w http.ResponseWriter, r *http.Request)
 		Height    uint64     `json:"height"`
 		Block     chain.Hash `json:"block"`
 		Time      int64      `json:"time"`
-		Old       string     `json:"old"`
-		NewKey    string     `json:"newKey"`
+		Type      string     `json:"type"`
+		Old       string     `json:"old,omitempty"`
+		NewKey    string     `json:"newKey,omitempty"`
+		NewID     string     `json:"newId,omitempty"`
 		Approvers []string   `json:"approvers"`
 		Seq       uint64     `json:"seq"`
 	}
 	hist := []event{}
 	for _, e := range n.store.RotationHistory() {
-		ev := event{Height: e.Height, Block: e.Block, Time: e.Time, Old: e.Rotation.Change.Old, NewKey: e.Rotation.Change.NewKey, Seq: e.Rotation.Change.Seq}
+		c := e.Rotation.Change
+		ev := event{Height: e.Height, Block: e.Block, Time: e.Time, Type: c.Type, Old: c.Old, NewKey: c.NewKey, NewID: newKeyID(c), Seq: c.Seq}
 		for _, s := range e.Rotation.Signatures {
 			ev.Approvers = append(ev.Approvers, s.Signer)
 		}
 		hist = append(hist, ev)
 	}
-	st := n.store.HeadState()
+	parent := n.store.HeadParent()
+	st := parent.State
 	pending := n.rots.List()
 	if pending == nil {
 		pending = []chain.Rotation{} // JSON [] rather than null
@@ -341,13 +345,23 @@ func (n *Node) handleExplorerAuthorities(w http.ResponseWriter, r *http.Request)
 		"genesis":  n.store.P.Genesis.Authorities,
 		"current":  st.IDs,
 		"seq":      st.Seq,
-		"quorum":   n.store.P.Rules.RotationQuorum,
-		"window":   n.store.P.RecentSignerWindow(),
+		"quorum":   n.quorum(parent),
+		"window":   st.SignerWindow(),
 		"history":  hist,
 		"pending":  pending,
 		"canSign":  n.localKeyIDs(),
 		"rotation": n.store.P.Rules,
 	})
+}
+
+// newKeyID is the ID of the key a change replaces with or adds, or "" if none.
+func newKeyID(c chain.KeyChange) string {
+	pub, err := chain.DecodePublicKey(c.NewKey)
+	if err != nil {
+		return ""
+	}
+	id, _ := chain.KeyID(pub)
+	return id
 }
 
 // localKeyIDs lists the authority keys this node holds, so the UI can show which ones sign here.

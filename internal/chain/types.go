@@ -73,7 +73,9 @@ type Rules struct {
 	RequireNonRepudiation bool `json:"requireNonRepudiation"`
 	MaxPayloadBytes       int  `json:"maxPayloadBytes"`
 	// RotationQuorum is how many distinct currently valid authority keys must
-	// sign a key rotation (1..N). The default is a majority, N/2+1.
+	// sign a key rotation (1..N). The default is a majority, N/2+1. From the
+	// authority-changes feature the quorum is always a majority of the keys
+	// current at the time, and this value is no longer used.
 	RotationQuorum int `json:"rotationQuorum"`
 	// MaxRotationsPerBlock caps control messages in one block.
 	MaxRotationsPerBlock int `json:"maxRotationsPerBlock"`
@@ -107,14 +109,18 @@ type Header struct {
 	TimestampHash *Hash `json:"timestampHash,omitempty"`
 }
 
-// KeyChange replaces one authority key by another. It is a control message:
-// not an eID record, but signed by authority ECDSA keys.
+// KeyChange replaces, adds or removes an authority key. It is a control
+// message: not an eID record, but signed by authority ECDSA keys. Add and remove
+// need the authority-changes feature.
+//
+// Old and NewKey are omitted when empty so that a replace hashes exactly as it
+// did before add and remove existed.
 type KeyChange struct {
-	Type   string `json:"type"`   // "replace"
-	Chain  Hash   `json:"chain"`  // the genesis hash: the change is for this chain only
-	Seq    uint64 `json:"seq"`    // rotations already applied before this one; prevents replay
-	Old    string `json:"old"`    // key ID of the authority being replaced
-	NewKey string `json:"newKey"` // base64 DER SPKI of the replacement (ECDSA P-256)
+	Type   string `json:"type"`             // "replace", "add" or "remove"
+	Chain  Hash   `json:"chain"`            // the genesis hash: the change is for this chain only
+	Seq    uint64 `json:"seq"`              // rotations already applied before this one; prevents replay
+	Old    string `json:"old,omitempty"`    // key ID of the authority replaced or removed
+	NewKey string `json:"newKey,omitempty"` // base64 DER SPKI of the key replacing or added (ECDSA P-256)
 }
 
 // Hash is what authorities sign.

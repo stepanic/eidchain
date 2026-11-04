@@ -130,7 +130,7 @@ type Parent struct {
 	// State is the authority set after the parent: the keys that are valid
 	// signers (of the block and of any rotation approvals) for the child.
 	State *State
-	// RecentSigners are the signers of the last RecentSignerWindow blocks up to
+	// RecentSigners are the signers of the last State.SignerWindow() blocks up to
 	// and including the parent (newest first). The genesis has no signer.
 	RecentSigners []string
 }
@@ -172,7 +172,7 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 		return nil, errors.New("signer is not a currently valid authority")
 	}
 	if !p.CanSign(h.Signer, parent) {
-		return nil, fmt.Errorf("signer signed one of the last %d blocks", p.RecentSignerWindow())
+		return nil, fmt.Errorf("signer signed one of the last %d blocks", parent.State.SignerWindow())
 	}
 	if h.PayloadCount != len(b.Payloads) || h.RotationCount != len(b.Rotations) {
 		return nil, errors.New("payloadCount or rotationCount does not match the block body")
@@ -222,7 +222,7 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 	// Key rotations: approved by keys valid at the parent, applied in order.
 	next := parent.State
 	for i, r := range b.Rotations {
-		if next, err = p.ApplyRotation(parent.State, next, r); err != nil {
+		if next, err = p.ApplyRotation(parent.State, next, r, h.Height); err != nil {
 			return nil, fmt.Errorf("rotation %d: %w", i, err)
 		}
 	}

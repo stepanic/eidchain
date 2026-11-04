@@ -42,6 +42,13 @@ function heading(eyebrow, title, lead) {
   return h("section", { class: "hero" }, h("p", { class: "eyebrow" }, eyebrow), h("h1", {}, title), lead ? h("p", { class: "lead" }, lead) : null);
 }
 
+// change describes a key rotation; added is how to show the new key, if any.
+function change(type, old, added) {
+  if (type === "add") return ["add ", added];
+  if (type === "remove") return ["remove ", keyLink(old)];
+  return ["replace ", keyLink(old), " with ", added];
+}
+
 function kv(rows) {
   const dl = h("dl", { class: "kv" });
   for (const [k, v] of rows) if (v !== undefined && v !== null) dl.append(h("dt", {}, k), h("dd", {}, v));
@@ -128,8 +135,9 @@ async function viewBlock(ref) {
         h("div", { class: "meta" }, `${t.subject} · ${bytes(t.bytes)} · `, txLink(t.id)))))
       : h("p", { class: "small" }, "This block carries no messages."),
     b.rotationList.length ? [h("h2", {}, "Key rotations"), ...b.rotationList.map((r) => h("div", { class: "card" }, kv([
-      ["replaces", keyLink(r.change.old)],
-      ["new key", h("span", { class: "hash" }, short(r.change.newKey, 16, 8))],
+      ["change", r.change.type],
+      [r.change.type === "remove" ? "removes" : "replaces", r.change.old ? keyLink(r.change.old) : null],
+      [r.change.type === "add" ? "adds" : "new key", r.change.newKey ? h("span", { class: "hash" }, short(r.change.newKey, 16, 8)) : null],
       ["sequence", String(r.change.seq)],
       ["approved by", r.signatures.map((s, i) => [i ? ", " : "", keyLink(s.signer)])],
     ])))] : null,
@@ -217,16 +225,18 @@ async function viewAuthorities(highlight) {
     mine.has(id) ? h("span", { class: "badge good" }, "key held by this node") : "",
   ];
   show(
-    heading("explorer", "Authorities.", `Blocks are signed by one of ${a.current.length} keys. A key may not sign again within ${a.window} block${a.window === 1 ? "" : "s"} of its last one, and replacing a key needs ${a.quorum} approval${a.quorum === 1 ? "" : "s"}.`),
+    heading("explorer", "Authorities.", `Blocks are signed by one of ${a.current.length} keys. A key may not sign again within ${a.window} block${a.window === 1 ? "" : "s"} of its last one, and changing the keys needs ${a.quorum} approval${a.quorum === 1 ? "" : "s"}.`),
     h("div", { class: "stats" }, stat("authorities", a.current.length), stat("rotation quorum", a.quorum), stat("rotations so far", a.seq), stat("signer cooldown", `${a.window} block${a.window === 1 ? "" : "s"}`)),
     h("div", { class: "card" }, h("h2", {}, "Current keys"), table(["#", "Key id", ""], a.current.map(row))),
     h("div", { class: "card" }, h("h2", {}, "Rotation history"),
       a.history.length
-        ? table(["Block", "Time", "Replaced", "Approved by"], a.history.map((e) => [
-          blockLink(e.height), time(e.time), keyLink(e.old), e.approvers.map((s, i) => [i ? ", " : "", keyLink(s)])]))
+        ? table(["Block", "Time", "Change", "Approved by"], a.history.map((e) => [
+          blockLink(e.height), time(e.time), change(e.type, e.old, e.newId ? keyLink(e.newId) : null), e.approvers.map((s, i) => [i ? ", " : "", keyLink(s)])]))
         : h("p", { class: "small" }, "No key has been rotated.")),
     (a.pending ?? []).length ? h("div", { class: "card" }, h("h2", {}, "Proposals waiting for approvals"),
-      table(["Replaces", "Approvals"], a.pending.map((p) => [keyLink(p.change.old), `${p.signatures.length} of ${a.quorum}`]))) : null,
+      table(["Change", "Approvals"], a.pending.map((p) => [
+        change(p.change.type, p.change.old, p.change.newKey ? h("span", { class: "hash" }, short(p.change.newKey, 16, 8)) : null),
+        `${p.signatures.length} of ${a.quorum}`]))) : null,
   );
 }
 

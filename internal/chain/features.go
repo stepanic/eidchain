@@ -17,11 +17,17 @@ const (
 	// FeatureBlockTimestamps requires an RFC 3161 token in every block, covered by
 	// the block hash.
 	FeatureBlockTimestamps = "block-timestamps"
+	// FeatureAuthorityChanges lets rotations add and remove authority keys, not
+	// only replace them. The rotation quorum and the signer window then follow the
+	// current number of keys, because numbers fixed by the genesis stop meaning
+	// "a majority" once that number changes.
+	FeatureAuthorityChanges = "authority-changes"
 )
 
 // featureVersions gives the block version each known feature introduces.
 var featureVersions = map[string]int{
-	FeatureBlockTimestamps: 2,
+	FeatureBlockTimestamps:  2,
+	FeatureAuthorityChanges: 3,
 }
 
 // Schedule says from which height each feature applies. It comes from the "features"

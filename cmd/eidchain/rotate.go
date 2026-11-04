@@ -15,14 +15,17 @@ import (
 )
 
 const rotateUsage = `usage:
-  eidchain rotate create --old KEY-ID-PREFIX --new-key FILE [--server URL] [--out rotation.json]
+  eidchain rotate create [--old KEY-ID-PREFIX] [--new-key FILE] [--server URL] [--out rotation.json]
   eidchain rotate sign   --key AUTHORITY.key [--yes] rotation.json
   eidchain rotate submit [--server URL] rotation.json
 
-A rotation replaces one authority key by another. It needs approvals from at
-least the chain's rotation quorum of currently valid authority keys: each
-authority runs "rotate sign" on the same file, then anyone submits it to a node.
-The file is a proposal until enough signatures are collected.`
+A rotation changes the authority keys. With --old and --new-key it replaces a
+key, with only --new-key it adds one, and with only --old it removes one.
+Adding and removing need the authority-changes feature on the chain.
+
+It needs approvals from at least the chain's rotation quorum of currently valid
+authority keys: each authority runs "rotate sign" on the same file, then anyone
+submits it to a node. The file is a proposal until enough signatures are collected.`
 
 func cmdRotate(args []string) error {
 	if len(args) == 0 {
@@ -43,14 +46,20 @@ func rotateCreate(args []string) error {
 	fs := newFlagSet("rotate create")
 	data := fs.String("data", defaultData(), "data directory (to find a configured peer)")
 	server := fs.String("server", "", "node URL")
-	old := fs.String("old", "", "ID (or unique prefix) of the authority key to replace")
-	newKey := fs.String("new-key", "", "private key file for the new authority key; generated if it does not exist")
+	old := fs.String("old", "", "ID (or unique prefix) of the authority key to replace or remove")
+	newKey := fs.String("new-key", "", "private key file for the key to add or replace with; generated if it does not exist")
 	out := fs.String("out", "rotation.json", "proposal file to write")
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
-	if *old == "" || *newKey == "" {
-		return errors.New("--old and --new-key are required")
+	change := chain.KeyChange{Type: "replace"}
+	switch {
+	case *old == "" && *newKey == "":
+		return errors.New("--old, --new-key or both are required")
+	case *old == "":
+		change.Type = "add"
+	case *newKey == "":
+		change.Type = "remove"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -58,39 +67,74 @@ func rotateCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	var oldID string
-	for _, id := range info.Authorities {
-		if strings.HasPrefix(id, *old) {
-			if oldID != "" {
-				return fmt.Errorf("--old %q is ambiguous", *old)
+	change.Chain, change.Seq = info.GenesisHash, info.RotationSeq
+	if *old != "" {
+		for _, id := range info.Authorities {
+			if strings.HasPrefix(id, *old) {
+				if change.Old != "" {
+					return fmt.Errorf("--old %q is ambiguous", *old)
+				}
+				change.Old = id
 			}
-			oldID = id
+		}
+		if change.Old == "" {
+			return fmt.Errorf("no current authority matches %q", *old)
 		}
 	}
-	if oldID == "" {
-		return fmt.Errorf("no current authority matches %q", *old)
-	}
-	key, err := chain.LoadPrivateKey(*newKey)
-	if errors.Is(err, os.ErrNotExist) {
-		if key, err = chain.GenerateKey(); err != nil {
+	if *newKey != "" {
+		key, err := chain.LoadPrivateKey(*newKey)
+		if errors.Is(err, os.ErrNotExist) {
+			if key, err = chain.GenerateKey(); err != nil {
+				return err
+			}
+			if err = chain.SavePrivateKey(*newKey, key); err != nil {
+				return err
+			}
+			fmt.Printf("Generated new authority key %s\n", *newKey)
+		} else if err != nil {
 			return err
 		}
-		if err = chain.SavePrivateKey(*newKey, key); err != nil {
-			return err
-		}
-		fmt.Printf("Generated new authority key %s\n", *newKey)
-	} else if err != nil {
-		return err
+		change.NewKey, _ = chain.EncodePublicKey(&key.PublicKey)
 	}
-	pub, _ := chain.EncodePublicKey(&key.PublicKey)
-	newID, _ := chain.KeyID(&key.PublicKey)
-	rot := chain.Rotation{Change: chain.KeyChange{Type: "replace", Chain: info.GenesisHash, Seq: info.RotationSeq, Old: oldID, NewKey: pub}}
+	rot := chain.Rotation{Change: change}
 	if err := writeRotation(*out, rot); err != nil {
 		return err
 	}
-	fmt.Printf("Proposal %s written to %s\n  replace %s\n  with    %s\nNeeds %d approval(s): run `eidchain rotate sign --key <authority.key> %s`.\n",
-		rot.Change.Hash().Short(), *out, oldID, newID, info.RotationQuorum, *out)
+	desc, err := describeChange(change)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Proposal %s written to %s\n%sNeeds %d approval(s): run `eidchain rotate sign --key <authority.key> %s`.\n",
+		rot.Change.Hash().Short(), *out, desc, info.RotationQuorum, *out)
 	return nil
+}
+
+// describeChange lists the keys a change touches, one per line.
+func describeChange(c chain.KeyChange) (string, error) {
+	var b strings.Builder
+	if c.Old != "" {
+		verb := "replace"
+		if c.Type == "remove" {
+			verb = "remove"
+		}
+		fmt.Fprintf(&b, "  %-8s %s\n", verb, c.Old)
+	}
+	if c.NewKey != "" {
+		pub, err := chain.DecodePublicKey(c.NewKey)
+		if err != nil {
+			return "", fmt.Errorf("proposal: %w", err)
+		}
+		newID, err := chain.KeyID(pub)
+		if err != nil {
+			return "", err
+		}
+		verb := "with"
+		if c.Type == "add" {
+			verb = "add"
+		}
+		fmt.Fprintf(&b, "  %-8s %s\n", verb, newID)
+	}
+	return b.String(), nil
 }
 
 func rotateSign(args []string) error {
@@ -129,18 +173,16 @@ func rotateSign(args []string) error {
 }
 
 // confirmRotation shows what is about to be approved. A proposal is just a file
-// someone sent you, and approving it hands authority to whoever holds the new key.
+// someone sent you, and approving it can hand authority to whoever holds the new key.
 func confirmRotation(r chain.Rotation, signer string, yes bool) error {
-	pub, err := chain.DecodePublicKey(r.Change.NewKey)
-	if err != nil {
-		return fmt.Errorf("proposal: %w", err)
-	}
-	newID, err := chain.KeyID(pub)
+	desc, err := describeChange(r.Change)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("You are approving, as %s…:\n  chain    %s\n  sequence %d\n  replace  %s\n  with     %s\n", signer[:12], r.Change.Chain, r.Change.Seq, r.Change.Old, newID)
-	fmt.Printf("Whoever holds the new key becomes a chain authority. Check its ID with them over a channel you trust.\n")
+	fmt.Printf("You are approving, as %s…:\n  chain    %s\n  sequence %d\n%s", signer[:12], r.Change.Chain, r.Change.Seq, desc)
+	if r.Change.NewKey != "" {
+		fmt.Printf("Whoever holds the new key becomes a chain authority. Check its ID with them over a channel you trust.\n")
+	}
 	if yes {
 		return nil
 	}

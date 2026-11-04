@@ -253,7 +253,7 @@ func (s *Store) checkReorgLocked(par *entry) error {
 // parentInfoLocked builds the Parent view for a stored entry.
 func (s *Store) parentInfoLocked(e *entry) Parent {
 	p := Parent{Hash: e.hash, Height: e.height, Time: e.time, State: e.state}
-	for cur, n := e, s.P.RecentSignerWindow(); n > 0 && cur.block != nil; n-- {
+	for cur, n := e, e.state.SignerWindow(); n > 0 && cur.block != nil; n-- {
 		p.RecentSigners = append(p.RecentSigners, cur.block.Header.Signer)
 		cur = s.blocks[cur.parent]
 	}
@@ -382,7 +382,7 @@ func (s *Store) Verify() (uint64, error) {
 			seen[p.ID()] = true
 		}
 		recent := signers
-		if w := s.P.RecentSignerWindow(); len(recent) > w {
+		if w := parent.State.SignerWindow(); len(recent) > w {
 			recent = recent[len(recent)-w:]
 		}
 		parent.RecentSigners = reverse(recent)

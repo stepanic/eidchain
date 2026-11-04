@@ -15,7 +15,7 @@ The repository also holds the website that runs at `eidchain.ivoras.net` (`www/`
 
 - **One static binary.** The example web app (HTML/JS/CSS) and the default eID CA certificates are embedded with `go:embed`; nothing is read from disk at runtime except your data directory.
 - **Proof of authority with any-key-signs-any-block.** Any key in the authority set may sign any block. Forks are resolved by *highest chain wins, ties broken by the lowest block hash*. A key may not sign if it signed one of the previous `floor(N/2)` blocks (the Clique rule), so rewriting history takes a majority of the keys.
-- **Authority key rotation inside the chain.** A block may carry `rotations`: control messages that replace one authority key with another. They must be approved by at least a quorum (default: a majority) of the keys that are valid *at that point in the chain*, and they take effect from the next block. Old blocks stay valid under the keys that were current when they were signed.
+- **Authority key rotation inside the chain.** A block may carry `rotations`: control messages that replace one authority key with another, or, with the `authority-changes` feature, add or remove one. They must be approved by at least a quorum (default: a majority) of the keys that are valid *at that point in the chain*, and they take effect from the next block. Old blocks stay valid under the keys that were current when they were signed.
 - **eID-signed payloads.** A payload is a JSON object (at most 10 KiB). Its signature is a detached CAdES-B-B CMS signature over the exact payload bytes, made by the signing certificate on the card. Every node re-verifies the signature and the certificate chain.
 - **Configurable eID CAs.** The trusted CA certificates are chosen when a chain is created (default: the Croatian AKDCA Root, HRIDCA and HRIDCA 2025, embedded). Certificates from other EU countries can be added in the config file.
 - **OCSP at submission.** When a payload is submitted, the node asks the signer certificate's OCSP responder and fails closed. The signed OCSP response is stored in the block next to the payload so anyone can audit it later (it is committed to by the block hash but is *not* a block validity rule, because revocation answers change over time).
@@ -76,7 +76,7 @@ A JSON document that fixes everything the consensus rules depend on:
 | `trustAnchors` | PEM CA certificates (roots and intermediates) accepted for eID signatures |
 | `rules.requireNonRepudiation` | Payload signing certificates must have the non-repudiation key usage (keeps *authentication* certificates from signing records) |
 | `rules.maxPayloadBytes` | Payload size cap (10240) |
-| `rules.rotationQuorum` | Approvals needed to rotate an authority key (default `N/2+1`) |
+| `rules.rotationQuorum` | Approvals needed to rotate an authority key (default `N/2+1`). Not used from the `authority-changes` height, where the quorum is a majority of the current keys |
 | `rules.maxRotationsPerBlock` | Cap on control messages per block |
 
 The **genesis hash** (SHA-256 over the canonical JSON) is the chain's identity. Nodes refuse chains with a different genesis hash, which is why `--genesis-hash` is configurable and why `genesis` can start new chains at will.
@@ -143,10 +143,10 @@ A node accepts a block only if all of these hold:
 
 0. The JSON it arrived in is unambiguous (no duplicate keys, exact-case field names, no unknown fields).
 1. The `version` is the one the [feature schedule](#features) requires at this height, it builds on a known parent, height is parent + 1, and `time` is not before the parent's and not more than 5 minutes in the future.
-2. The signer is an authority **in the parent's authority state** and did not sign any of the previous `floor(N/2)` blocks. The block signature is valid.
+2. The signer is an authority **in the parent's authority state** and did not sign any of the previous `floor(N/2)` blocks, where N is the number of keys in that state. The block signature is valid.
 3. `payloadCount`, `rotationCount`, `payloadsRoot` and `rotationsRoot` match the body, and the block's JSON is at most 8 MiB. From the `block-timestamps` height, it carries a valid [timestamp](#block-timestamps).
 4. Every payload: valid UTF-8, a JSON object with no duplicate or case-variant keys at any level, within the size cap; a valid detached CAdES-B-B signature (RSA PKCS#1 v1.5 or ECDSA with SHA-256/384/512; RSA-PSS is not supported); the signer certificate chains to the genesis trust anchors **judged at the block's timestamp**; non-repudiation key usage if the genesis requires it; no payload that already appears in the block or in its ancestors.
-5. Every rotation: for this chain, `seq` equals the number of rotations applied so far (no replays), replaces a current authority with a new P-256 key that is not already one, and carries valid approvals from at least `rotationQuorum` distinct keys of the parent's state.
+5. Every rotation: for this chain, `seq` equals the number of rotations applied so far (no replays), replaces a current authority with a new P-256 key that is not already one (or, from the `authority-changes` height, adds such a key or removes a current authority other than the last one), and carries valid approvals from at least the quorum of distinct keys of the parent's state.
 
 Revocation (OCSP) is deliberately **not** part of these rules, so validation is deterministic and works offline.
 
@@ -167,6 +167,7 @@ A feature is a change to the block format or the consensus rules that starts at 
 | Feature | Block version | What it requires |
 | --- | --- | --- |
 | `block-timestamps` | 2 | A timestamp in every block, covered by the block hash |
+| `authority-changes` | 3 | Rotations may add and remove authority keys; the rotation quorum is a majority of the current keys |
 
 A height of `null` means the feature never applies. That has the same effect as leaving it out, and nodes treat the two as the same schedule, but it records the decision. To turn a feature off, the height must be above every existing block that uses it, or `null` will make those blocks invalid.
 
@@ -195,11 +196,13 @@ The roots of both services are pinned in `internal/tsa/roots/`. They are part of
 
 ### Key rotation
 
-A rotation replaces authority key `old` with `newKey`. Signing it works like a multi-signature file:
+A rotation replaces authority key `old` with `newKey`. With the `authority-changes` feature it can also add a key (`newKey` only) or remove one (`old` only), so the set of authorities can grow beyond the genesis: an outsider becomes an authority without anyone giving up a key. Signing it works like a multi-signature file:
 
 ```sh
 # Anyone: create the proposal (generates the new key file if it does not exist).
 eidchain rotate create --server http://host:8080 --old a2e51a21 --new-key new.key --out rotation.json
+#   add a key:    --new-key new.key only
+#   remove a key: --old a2e51a21 only
 
 # Each approving authority adds its signature to the same file.
 eidchain rotate sign --key data/keys/authority-2.key rotation.json
@@ -212,7 +215,9 @@ eidchain rotate submit --server http://host:8080 rotation.json
 
 `rotate sign` shows the change and asks before signing, because the new key's holder becomes an authority: compare the new key's ID with its owner over a channel you trust. `--yes` skips the question for scripts.
 
-Once the quorum is reached, the next block a node cuts includes the rotation. Put the new key's file into the signing nodes' keys directory so they can use it. A block that carries the rotation may still be signed by the key it retires: the change applies from the *next* block.
+Once the quorum is reached, the next block a node cuts includes the rotation.
+
+**The quorum and the signer window follow the number of keys.** A number fixed in the genesis would stop meaning "a majority" once keys can be added: with a quorum of 2, two keys could add any number of their own. So from the `authority-changes` height the quorum is a majority of the keys current when the rotation is approved, and the signer window, `floor(N/2)`, always uses the current N. Before the feature N cannot change, so the window is the same as it always was. A majority can therefore add or remove keys at will. That is the trust the authority set already has, not a new one. The last key cannot be removed, because the chain would then stop for good. Put the new key's file into the signing nodes' keys directory so they can use it. A block that carries the rotation may still be signed by the key it retires: the change applies from the *next* block.
 
 ### Which eID certificates are accepted
 
@@ -496,7 +501,7 @@ If a key ever does get pushed, treat it as compromised: rotate it (see [Key rota
 - **The `chain` field is checked at submission, not in blocks,** like OCSP: an authority that bypasses the API can still include a record without it.
 - **OCSP is only checked at submission** by the first node. Other nodes verify the stored response offline and do not re-query.
 - **Trust anchors are fixed by the genesis.** Changing them means a new chain.
-- **Only replacement rotations.** The authority count stays constant; adding or removing authorities is not implemented.
+- **Authorities are chosen by the authorities.** With `authority-changes` the set can grow, but only when a majority of the current keys approves. Nobody can join on their own.
 - **Peer discovery is minimal.** Nodes learn peers from the ones they already have (see [Peers and peer exchange](#peers-and-peer-exchange)), but there is no bootstrap list or DNS discovery: a new node needs at least one peer address to start from.
 - **Whole chain in memory.** Fine for a PoC; see [Future Plans](#future-plans).
 - **No access control, and rate limiting only in nginx.** The pending pool is capped at 5000 payloads, but one card can fill it.

@@ -166,25 +166,19 @@ func newRotationPool() *RotationPool {
 	return &RotationPool{items: map[chain.Hash]*chain.Rotation{}}
 }
 
-// Add validates the proposal and each approval against the current state and
+// Add validates the proposal and each approval against the head, parent, and
 // merges them. changed is false if nothing new was learnt.
-func (rp *RotationPool) Add(p *chain.Params, st *chain.State, r chain.Rotation) (status chain.Hash, approvals int, changed bool, err error) {
+func (rp *RotationPool) Add(p *chain.Params, parent chain.Parent, r chain.Rotation) (status chain.Hash, approvals int, changed bool, err error) {
 	c := r.Change
 	status = c.Hash()
+	st := parent.State
 	// Proposals must carry at least one approval. A proposal nobody signed costs
 	// nothing to make, so accepting one would let anyone fill this pool.
 	if len(r.Signatures) == 0 {
 		return status, 0, false, errors.New("a rotation needs at least one authority's approval")
 	}
-	if c.Type != "replace" || c.Chain != p.GenesisHash || c.Seq != st.Seq || !st.Has(c.Old) {
-		return status, 0, false, errors.New("rotation does not apply to the current chain state (type, chain, seq or old key)")
-	}
-	pub, derr := chain.DecodePublicKey(c.NewKey)
-	if derr != nil {
-		return status, 0, false, derr
-	}
-	if id, _ := chain.KeyID(pub); st.Has(id) {
-		return status, 0, false, errors.New("new key is already an authority")
+	if _, _, err := p.CheckChange(st, c, parent.Height+1); err != nil {
+		return status, 0, false, fmt.Errorf("rotation does not apply to the current chain state: %w", err)
 	}
 	h := c.Hash()
 	rp.mu.Lock()
@@ -208,13 +202,15 @@ func (rp *RotationPool) Add(p *chain.Params, st *chain.State, r chain.Rotation) 
 	return status, len(cur.Signatures), len(cur.Signatures) > before, nil
 }
 
-// Ready returns rotations with enough approvals that apply, in order, to st.
-func (rp *RotationPool) Ready(p *chain.Params, st *chain.State) []chain.Rotation {
+// Ready returns rotations with enough approvals that apply, in order, to a
+// child of parent.
+func (rp *RotationPool) Ready(p *chain.Params, parent chain.Parent) []chain.Rotation {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
+	st, height := parent.State, parent.Height+1
 	var all []chain.Rotation
 	for _, r := range rp.items {
-		if len(r.Signatures) >= p.Rules.RotationQuorum {
+		if len(r.Signatures) >= p.Quorum(st, height) {
 			all = append(all, r.Clone())
 		}
 	}
@@ -230,7 +226,7 @@ func (rp *RotationPool) Ready(p *chain.Params, st *chain.State) []chain.Rotation
 		if len(out) >= p.Rules.MaxRotationsPerBlock || r.Change.Seq != working.Seq {
 			continue
 		}
-		next, err := p.ApplyRotation(st, working, r)
+		next, err := p.ApplyRotation(st, working, r, height)
 		if err != nil {
 			continue
 		}
@@ -240,12 +236,12 @@ func (rp *RotationPool) Ready(p *chain.Params, st *chain.State) []chain.Rotation
 	return out
 }
 
-// Prune drops proposals that can no longer apply after the state changed.
-func (rp *RotationPool) Prune(st *chain.State) {
+// Prune drops proposals that can no longer apply after the head changed.
+func (rp *RotationPool) Prune(p *chain.Params, parent chain.Parent) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 	for h, r := range rp.items {
-		if r.Change.Seq != st.Seq || !st.Has(r.Change.Old) {
+		if _, _, err := p.CheckChange(parent.State, r.Change, parent.Height+1); err != nil {
 			delete(rp.items, h)
 		}
 	}

@@ -116,8 +116,3 @@ func NewParams(g *Genesis) (*Params, error) {
 	p.Trust = ts
 	return p, nil
 }
-
-// RecentSignerWindow is how many preceding blocks a signer must not appear in
-// (Clique rule): a key may sign at most one block in any floor(N/2)+1
-// consecutive blocks, so rewriting history takes a majority of the keys.
-func (p *Params) RecentSignerWindow() int { return len(p.Initial.IDs) / 2 }

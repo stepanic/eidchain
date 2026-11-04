@@ -592,3 +592,136 @@ func TestNullHeightMeansNever(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// authorityEnv is a chain of n keys where rotations may add and remove keys from height 2.
+func authorityEnv(t *testing.T, n int) *env {
+	t.Helper()
+	e := newEnv(t, n)
+	var err error
+	if e.store, err = chain.Open(e.dir, e.genesis.Hash(), chain.Options{Features: chain.Schedule{chain.FeatureAuthorityChanges: chain.At(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// nextV builds a signed block of the given version on the head.
+func (e *env) nextV(version int, s chain.Signer, payloads []chain.PayloadEntry, rots []chain.Rotation) *chain.Block {
+	head, h := e.store.Head()
+	b := &chain.Block{Header: chain.Header{Version: version, Height: h + 1, Prev: head, Time: time.Now().Unix()}, Payloads: payloads, Rotations: rots}
+	if err := chain.SignBlock(s, b); err != nil {
+		e.t.Fatal(err)
+	}
+	return b
+}
+
+func approved(t *testing.T, c chain.KeyChange, approvers ...chain.Signer) chain.Rotation {
+	t.Helper()
+	r := chain.Rotation{Change: c}
+	for _, a := range approvers {
+		sig, err := chain.SignKeyChange(a, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.AddSignature(sig)
+	}
+	return r
+}
+
+func TestAuthorityChanges(t *testing.T) {
+	e := authorityEnv(t, 3) // quorum 2, window 1
+	s := e.signers
+	g := e.genesis.Hash()
+	k, _ := chain.GenerateKey()
+	kid, _ := chain.KeyID(&k.PublicKey)
+	kpub, _ := chain.EncodePublicKey(&k.PublicKey)
+	added := chain.Signer{ID: kid, Key: k}
+	add := approved(t, chain.KeyChange{Type: "add", Chain: g, Seq: 0, NewKey: kpub}, s[0], s[1])
+
+	// Before the feature's height an add is refused.
+	if _, err := e.store.AddBlock(e.nextV(1, s[2], nil, []chain.Rotation{add})); err == nil || !strings.Contains(err.Error(), "needs the authority-changes feature") {
+		t.Fatalf("add before the feature accepted: %v", err)
+	}
+	if _, err := e.store.AddBlock(e.nextV(1, s[2], []chain.PayloadEntry{e.payload("one")}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	// From it, blocks are version 3.
+	if _, err := e.store.AddBlock(e.nextV(1, s[0], []chain.PayloadEntry{e.payload("old version")}, nil)); err == nil || !strings.Contains(err.Error(), "expected 3") {
+		t.Fatalf("old block version accepted: %v", err)
+	}
+	// Malformed changes are refused.
+	for name, c := range map[string]chain.KeyChange{
+		"add with an old key":       {Type: "add", Chain: g, Seq: 0, Old: s[2].ID, NewKey: kpub},
+		"remove with a new key":     {Type: "remove", Chain: g, Seq: 0, Old: s[2].ID, NewKey: kpub},
+		"remove of a non-authority": {Type: "remove", Chain: g, Seq: 0, Old: kid},
+		"add of an authority":       {Type: "add", Chain: g, Seq: 0, NewKey: mustPub(t, s[2])},
+	} {
+		if _, err := e.store.AddBlock(e.nextV(3, s[0], nil, []chain.Rotation{approved(t, c, s[0], s[1])})); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+
+	// Add a fourth key with 2 of 3 approvals.
+	if _, err := e.store.AddBlock(e.nextV(3, s[0], nil, []chain.Rotation{add})); err != nil {
+		t.Fatalf("add rejected: %v", err)
+	}
+	st := e.store.HeadState()
+	if len(st.IDs) != 4 || st.IDs[3] != kid || st.Seq != 1 || st.SignerWindow() != 2 {
+		t.Fatalf("state after add: %v seq %d", st.IDs, st.Seq)
+	}
+	if q := e.store.P.Quorum(st, 4); q != 3 {
+		t.Fatalf("quorum of 4 keys is %d, want 3", q)
+	}
+	// The window grew to 2: s[2] signed block 1 and may not sign block 3, though with 3 keys it could.
+	if _, err := e.store.AddBlock(e.nextV(3, s[2], []chain.PayloadEntry{e.payload("too soon")}, nil)); err == nil || !strings.Contains(err.Error(), "last 2 blocks") {
+		t.Fatalf("window did not grow: %v", err)
+	}
+	if _, err := e.store.AddBlock(e.nextV(3, added, []chain.PayloadEntry{e.payload("by the added key")}, nil)); err != nil {
+		t.Fatalf("added key cannot sign: %v", err)
+	}
+
+	// Removing s[2] now needs 3 approvals.
+	weak := approved(t, chain.KeyChange{Type: "remove", Chain: g, Seq: 1, Old: s[2].ID}, s[0], s[1])
+	if _, err := e.store.AddBlock(e.nextV(3, s[1], nil, []chain.Rotation{weak})); err == nil || !strings.Contains(err.Error(), "3 required") {
+		t.Fatalf("remove with 2 of 4 approvals: %v", err)
+	}
+	rm := approved(t, weak.Change, s[0], s[1], added)
+	if _, err := e.store.AddBlock(e.nextV(3, s[1], nil, []chain.Rotation{rm})); err != nil {
+		t.Fatalf("remove rejected: %v", err)
+	}
+	if st = e.store.HeadState(); len(st.IDs) != 3 || st.Has(s[2].ID) || st.SignerWindow() != 1 {
+		t.Fatalf("state after remove: %v", st.IDs)
+	}
+	if _, err := e.store.AddBlock(e.nextV(3, s[2], []chain.PayloadEntry{e.payload("removed")}, nil)); err == nil || !strings.Contains(err.Error(), "not a currently valid") {
+		t.Fatalf("removed key accepted: %v", err)
+	}
+
+	// The whole chain replays with the window and quorum of each point in it.
+	re, err := chain.Open(e.dir, g, chain.Options{Features: e.store.P.Features})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h, err := re.Verify(); err != nil || h != 4 {
+		t.Fatalf("verify: height %d, %v", h, err)
+	}
+}
+
+func TestLastAuthorityCannotBeRemoved(t *testing.T) {
+	e := authorityEnv(t, 1)
+	s := e.signers[0]
+	if _, err := e.store.AddBlock(e.nextV(1, s, []chain.PayloadEntry{e.payload("one")}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	rm := approved(t, chain.KeyChange{Type: "remove", Chain: e.genesis.Hash(), Seq: 0, Old: s.ID}, s)
+	if _, err := e.store.AddBlock(e.nextV(3, s, nil, []chain.Rotation{rm})); err == nil || !strings.Contains(err.Error(), "last authority") {
+		t.Fatalf("last authority removed: %v", err)
+	}
+}
+
+func mustPub(t *testing.T, s chain.Signer) string {
+	t.Helper()
+	pub, err := chain.EncodePublicKey(&s.Key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pub
+}

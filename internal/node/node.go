@@ -147,7 +147,7 @@ func (n *Node) Run(ctx context.Context) error {
 	head, h := n.store.Head()
 	log.Printf("chain %s (%q)", n.store.P.GenesisHash.Short(), n.store.P.Genesis.Message)
 	log.Printf("head: height %d, %s; %d authorities; %d local signing key(s); ocsp=%s; block interval %s",
-		h, head.Short(), len(n.store.P.Initial.IDs), len(n.signers), n.opt.OCSP, n.opt.BlockInterval)
+		h, head.Short(), len(n.store.HeadState().IDs), len(n.signers), n.opt.OCSP, n.opt.BlockInterval)
 	if n.exchangeEnabled() {
 		log.Printf("peers: %d configured, %d learned; peer exchange on, advertising %q", len(n.peers), len(n.book.urls()), n.selfURL)
 	} else {
@@ -188,8 +188,8 @@ func (n *Node) onChange(res chain.AddResult) {
 		}
 	}
 	n.pool.Remove(included)
-	state := n.store.HeadState()
-	n.rots.Prune(state)
+	head := n.store.HeadParent()
+	n.rots.Prune(n.store.P, head)
 	for _, b := range res.Orphaned {
 		for _, p := range b.Payloads {
 			if n.store.OnChain(p.ID()) || n.pool.Has(p.ID()) {
@@ -203,11 +203,10 @@ func (n *Node) onChange(res chain.AddResult) {
 			n.pool.Add(poolItem{Entry: p, Subject: info.Subject, Serial: info.Serial, Added: time.Now().Unix()})
 		}
 		for _, r := range b.Rotations {
-			n.rots.Add(n.store.P, state, r) // dropped silently if it no longer applies
+			n.rots.Add(n.store.P, head, r) // dropped silently if it no longer applies
 		}
 	}
-	head, h := n.store.Head()
-	log.Printf("new head: height %d, %s (%d block(s) adopted, %d orphaned)", h, head.Short(), len(res.Adopted), len(res.Orphaned))
+	log.Printf("new head: height %d, %s (%d block(s) adopted, %d orphaned)", head.Height, head.Hash.Short(), len(res.Adopted), len(res.Orphaned))
 }
 
 // ---- payload submission ----
@@ -369,7 +368,7 @@ const blockOverhead = 2048 + tsa.MaxToken*2 // the token, as base64, and its has
 // produce cuts a block from pending payloads and ready rotations, if any.
 func (n *Node) produce() {
 	parent := n.store.HeadParent()
-	rots := n.rots.Ready(n.store.P, parent.State)
+	rots := n.rots.Ready(n.store.P, parent)
 	items := n.pool.Snapshot()
 	if len(items) == 0 && len(rots) == 0 {
 		return
@@ -380,7 +379,7 @@ func (n *Node) produce() {
 		if !n.warnedNoKey {
 			n.warnedNoKey = true
 			log.Printf("work is pending but no local authority key may sign now (keys: %d; a key cannot sign again within %d blocks of its last one)",
-				len(n.signers), n.store.P.RecentSignerWindow())
+				len(n.signers), parent.State.SignerWindow())
 		}
 		n.warnMu.Unlock()
 		return
