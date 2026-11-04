@@ -450,6 +450,26 @@ The repository copies in `deploy/` are the source of truth; `install.sh` copies 
 
 The node and its API are public, with no authentication. The nginx config limits each client to 30 POSTs a minute (burst 30), caps request bodies at 300 KiB (9 MiB for pushed blocks), and sends HSTS and a CSP. The node has no limits of its own, so do not expose its port directly. OCSP is `required`, so submissions wait until the signer's OCSP responder answers; if it is down the web app keeps the signature and retries without another PIN.
 
+## Deployment on macOS (launchd + nginx + Cloudflare Tunnel)
+
+`deploy/macos/install.sh` runs a node on a Mac with no open router port, as done for `https://eidchain.domovina.ai/chain/`. `cloudflared` connects out to Cloudflare, which terminates TLS. Behind it, nginx applies the same write limits, body caps and headers as `deploy/nginx-eidchain.conf`. nginx is needed because the node has no limits of its own. It takes the client address from `CF-Connecting-IP`, since every request arrives from the tunnel on loopback. The card-login page is left out, because a client certificate cannot pass through Cloudflare's TLS.
+
+The node, nginx and the tunnel are LaunchDaemons under an unprivileged user (`_eidchain`), with everything in `/opt/eidchain`. The generated configs and plists are not edited by hand: settings live in `deploy/macos/eidchain.env` (from `eidchain.env.example`, not in git).
+
+```sh
+go build -o bin/eidchain ./cmd/eidchain               # as yourself
+deploy/macos/build-nginx.sh                           # pinned, checksummed nginx in bin/nginx
+cloudflared tunnel login                              # browser; the zone of DOMAIN
+cloudflared tunnel create eidchain                    # prints TUNNEL_ID; credentials in ~/.cloudflared/
+cloudflared tunnel route dns eidchain eidchain.domovina.ai
+sudo mkdir -p /opt/eidchain/secrets/cloudflared
+sudo mv ~/.cloudflared/<TUNNEL_ID>.json /opt/eidchain/secrets/cloudflared/
+rm ~/.cloudflared/cert.pem                            # controls the whole zone; only needed for create and route
+sudo deploy/macos/install.sh install --seed DIR       # DIR: genesis.json, config.json, keys/ (first install only)
+```
+
+nginx is built from source rather than taken from Homebrew, which is unsupported on Intel Macs with macOS 26 and installs into a shared `/usr/local`. `deploy/macos/install.sh render DIR` writes every generated file to `DIR` for review. Logs are in `/opt/eidchain/logs/`. `genesis/domovina-genesis.json` is the genesis of that chain.
+
 ## Development
 
 ```sh
