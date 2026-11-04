@@ -1,0 +1,51 @@
+# eidchain.domovina.ai and eID validators
+
+Status on 2026-11-04. Our own chain runs on the stepanic fork, at https://eidchain.domovina.ai/chain/. It tests what we want to propose upstream (ivoras/eidchain): `authority-changes` and `eid-validators`. The how is in the README sections "Key rotation", "eID validators" and "Deployment on macOS". This file holds the reasons, the traps and what is still open.
+
+Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-croatian-eoi-macos.md).
+
+## The live chain
+
+- Genesis `70659df25175…beec8` (public copy in `genesis/domovina-genesis.json`). The 3 genesis keys sit on one host, i9.local, so the "majority" there is one machine.
+- Schedule: `block-timestamps` from 1, `authority-changes` and `eid-validators` from 3.
+- Blocks 1 and 2 are messages signed with Matija's eOI. Block 3 registers his first validator key, `69007f4b…`, from `/opt/eidchain/data/keys/validator.key`. At the time of writing it is a candidate. It counts once it signs a block, which needs a pending message.
+- The second validator key is meant for the Mac Mini, via `deploy/macos/join.sh`.
+
+```mermaid
+flowchart LR
+  B[browser + Web eID] -->|HTTPS| CF[Cloudflare]
+  CF -->|tunnel eidchain 7b43ab17…| CFD[cloudflared<br/>metrics 127.0.0.1:20242]
+  CFD --> NG[nginx 127.0.0.1:8096<br/>rate limit, body caps]
+  NG --> N[eidchain node 127.0.0.1:8095]
+  M[Mac Mini node] -->|pull + push| CF
+```
+
+On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovina.eidchain.{node,nginx,tunnel}` as user `_eidchain` (uid 471). The Gnosis node shares the machine, with its own tunnel `acutis` and metrics on 20241. A backup of the seed (genesis, config, the 3 genesis keys) is in `~/eidchain-domovina/seed/`. It should go to offline storage and then be deleted from there.
+
+## Design decisions and what was rejected
+
+- **The card signs a registration, not blocks.** Signing every block would need PIN2 and a person at the reader every 10 minutes, and the daemon can't reach Web eID, which lives in the browser. The node key signs blocks. The card vouches for it once.
+- **A person is the certificate's `serialNumber` (`PNOHR-` + OIB)**, not the certificate or the card, because those change when a card is replaced. Hashing the OIB was rejected: about 10¹⁰ values are brute-forced in minutes, and the certificate in the payload shows it anyway. The API only shows the name.
+- **Registrations are not approved by the authorities (option a).** Approval would leave the set closed. The cost: the card issuer (the state, AKD) becomes the root of trust and can mint validators.
+- **A new key is a candidate until it signs.** The first draft had registered keys count at once. That makes the chain trivially stoppable. With 3 running keys, 4 registrations nobody runs make N=7 and the window 3. The 3 running keys then fill the window, nobody may sign, and blocks stop forever. Removal by inactivity can't help, because removal needs blocks. Candidates may sign but don't raise N. Counted keys that idle for `max(16, 4N)` blocks become candidates again.
+- **One vote per person, up to 16 keys.** One key per person was the first version. The user wants geographic redundancy: one person, one card, many nodes. One key copied to several nodes would sign twice at the same height. So each node has its own key, and `State.Voter` maps all of a person's keys to one voter. The signer window and the quorum count voters. Recent signers are recorded as voters *as of the block*, so retiring a key can't reopen the window.
+- **No new feature for the multi-key change.** We changed `eid-validators` in place. The live chain only had a single first registration (block 3), which means the same under both rules. `verify` passes with the new binary.
+
+## Traps that cost time
+
+- **Changing the feature schedule on a running chain: stop the node first.** A block cut by the old process between reading the height and the restart has the old version, and the new schedule then rejects it. `enable-eid-validators.sh` did `bootout`, then `verify` for the height, then set height+1, then `bootstrap`.
+- **`cloudflared tunnel login` waits about 8 minutes and then gives up** ("Failed to write the certificate"). Authorising later downloads `cert.pem` in the browser of whoever clicked. The fix: run it while someone is at the screen. Afterwards, delete `cert.pem`, because it controls tunnels of the whole `domovina.ai` zone. The tunnel only needs `<UUID>.json`.
+- **Homebrew on i9.local can't install.** `/usr/local` belongs to the old user `stepanic`, and taps need trust. That's why nginx (1.30.6 + PCRE2 10.49, PGP-checked) comes from `deploy/macos/build-nginx.sh`, and Go comes as a tarball in `~/sdk/go1.27.3`. The system Go is 1.18, too old.
+- **`nginx -t` without `-e` warns about the compiled-in error log path.** Pass `-e` to the test and to the plist.
+- **SSH push to GitHub failed during an outage.** HTTPS with the gh credential helper worked.
+- **There's no `sudo` without a person.** Everything under `/opt` was prepared as a script for the user to run.
+
+## Open
+
+- [ ] Key `69007f4b…` signs its first block and becomes active. That needs one message on the chain.
+- [ ] Mac Mini: `join.sh`, sign the second key, check that the two keys take turns as one voter. Expected: the second key may not sign while the first is in the window.
+- [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
+- [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
+- [ ] Back up the 3 genesis keys offline. Later, remove them by rotation once enough eID validators are counted.
+- [ ] PR to ivoras/eidchain with `authority-changes` and `eid-validators`, after the Mac Mini test.
+- [ ] Point 3 of the original plan (BFT finality) and peer bootstrap aren't started.

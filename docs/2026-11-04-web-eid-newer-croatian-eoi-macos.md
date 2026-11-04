@@ -39,3 +39,7 @@ The defaults and the reasons are in `scripts/release-macos-italk.sh` in stepanic
 - Not yet tested on a real Intel Mac (the hr2 x86_64 build was only run under Rosetta).
 - PIN2 signing was tested with the arm64 build of the same code (hr1 and a local build), not with hr2.
 - Once #176 lands in an official Web eID release, users should reinstall the official DMG and the fork can go.
+
+## Related documents
+
+- [eidchain.domovina.ai and eID validators](2026-11-04-eidchain-domovina-and-eid-validators.md)
