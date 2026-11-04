@@ -52,7 +52,7 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - [x] Key `69007f4b…` active (block 4). Mac Mini node public, key `0b26a5a7…` registered.
 - [ ] i9: `git pull`, build, `DOMAIN=eidchain-i9.domovina.ai` + `ALIASES=eidchain.domovina.ai` in `eidchain.env`, `sudo deploy/macos/install.sh install`. DNS for `eidchain-i9` already points at tunnel `eidchain`. Then drop `scripts/chain-map-hints.json` once both nodes report `signingKeys`.
 - [ ] Check that `0b26a5a7` signs a block and that Matija's two keys take turns as one voter (the second may not sign while the first is in the window).
-- [ ] `join.sh`: a `LISTEN` setting, since `:8080` is often taken.
+- [x] `join.sh`: `LISTEN`, default `127.0.0.1:8097`, checked before the build.
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
 - [ ] Back up the 3 genesis keys offline. Later, remove them by rotation once enough eID validators are counted.

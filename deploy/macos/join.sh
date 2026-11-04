@@ -10,13 +10,24 @@
 # at once. All the keys you register count as one person.
 #
 # Settings (environment): SERVER, GENESIS_HASH, DATA (default ~/eidchain-data),
-# REPO (default ~/git/stepanic/eidchain). The defaults join eidchain.domovina.ai.
+# REPO (default ~/git/stepanic/eidchain), LISTEN (default 127.0.0.1:8097). The
+# defaults join eidchain.domovina.ai.
 set -euo pipefail
 
 SERVER=${SERVER:-https://eidchain.domovina.ai/chain}
 GENESIS_HASH=${GENESIS_HASH:-70659df25175f4f0da5fe0800393c5a0176ca0acbef7a9f3d3cb8cf7763beec8}
 DATA=${DATA:-$HOME/eidchain-data}
 REPO=${REPO:-$HOME/git/stepanic/eidchain}
+# Loopback, because the node has no limits of its own and must not face the
+# network directly (deploy/macos/install.sh puts nginx and a tunnel in front).
+# Not :8080, the node's default: on a desktop Mac that port is often taken.
+LISTEN=${LISTEN:-127.0.0.1:8097}
+
+# Fail now rather than after the download and build.
+if lsof -nP -iTCP:"${LISTEN##*:}" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "port ${LISTEN##*:} is taken; set LISTEN=127.0.0.1:<free port>" >&2
+  exit 1
+fi
 
 # Go from go.dev, pinned and checksummed: the system Go is often too old, and
 # Homebrew is not always usable.
@@ -50,4 +61,4 @@ cd "$REPO"
 bin/eidchain validator request --data "$DATA" --server "$SERVER" --out "$DATA/registration.json"
 echo
 echo "Running the node (Ctrl-C stops it). Its key signs blocks once the record above is on the chain."
-exec bin/eidchain node --data "$DATA"
+exec bin/eidchain node --data "$DATA" --listen "$LISTEN"
