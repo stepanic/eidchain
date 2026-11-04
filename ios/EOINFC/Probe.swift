@@ -69,6 +69,33 @@ extension Probe {
             let lc = String(format: "%02X", aid.count / 2)
             _ = await tx(tag, "SELECT \(aid)", "00A40400" + lc + aid + "00")
         }
+        await probeESign(tag)
+    }
+
+    /// Inside the eSign application: ask for the FCP (sizes and access rules) of
+    /// likely EFs and read their first bytes. 6982 means "security status not
+    /// satisfied", i.e. PACE or PIN is required. Only SELECT and READ BINARY,
+    /// so no retry counter is touched.
+    private func probeESign(_ tag: NFCISO7816Tag) async {
+        let esign = "A000000167455349474E"
+        add("--- eSign")
+        _ = await tx(tag, "SELECT eSign FCP", "00A404040A" + esign + "00")
+        let fids = ["2F02", "C000", "C001", "C100", "C101", "C200", "C201", "C500", "C501",
+                    "C600", "C700", "CE00", "5031", "5032", "5033", "4401", "4402", "4403",
+                    "4404", "4405", "0101", "0102", "0103", "D001", "D002", "1001", "1002"]
+        for fid in fids {
+            guard let sw = await tx(tag, "  FCP \(fid)", "00A4020402" + fid + "00"), sw == 0x9000 else { continue }
+            _ = await tx(tag, "    READ \(fid)", "00B0000040")
+        }
+        add("--- eSign SFI scan (READ BINARY by short EF id)")
+        _ = await tx(tag, "SELECT eSign", "00A4040C0A" + esign)
+        for sfi in 1...30 {
+            let p1 = String(format: "%02X", 0x80 | sfi)
+            guard let (data, sw) = await raw(tag, "00B0" + p1 + "0040") else { continue }
+            if sw == 0x6A82 { continue }
+            add("  SFI \(sfi): \(String(format: "%04X", sw))\(data.isEmpty ? "" : " " + hex(data))")
+        }
+        add("--- done")
     }
 
     private func readEF(_ tag: NFCISO7816Tag, _ name: String, fid: String) async {
