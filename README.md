@@ -237,6 +237,12 @@ eidchain validator request --data /path/to/data --server https://node.example/ch
 # Restart the node so it loads the new key.
 ```
 
+On a Mac, `deploy/macos/join.sh` does all of this for `eidchain.domovina.ai` (or the chain in `SERVER` and `GENESIS_HASH`), from fetching Go to running the node:
+
+```sh
+curl -sSfL https://raw.githubusercontent.com/stepanic/eidchain/main/deploy/macos/join.sh | bash
+```
+
 The record is a payload like any other, so it goes through the same signature, certificate and OCSP checks, and it is public:
 
 ```json
