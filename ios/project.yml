@@ -10,11 +10,16 @@ settings:
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
+packages:
+  PACEKit:
+    path: PACEKit
 targets:
   EOINFC:
     type: application
     platform: iOS
     sources: [EOINFC]
+    dependencies:
+      - package: PACEKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: hr.italk.eidchain.eoinfc

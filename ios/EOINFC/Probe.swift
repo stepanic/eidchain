@@ -1,4 +1,5 @@
 import CoreNFC
+import PACEKit
 import Foundation
 
 /// First milestone: learn what the card exposes over NFC *without* PACE or PIN.
@@ -9,8 +10,11 @@ import Foundation
 final class Probe: NSObject, ObservableObject {
     @Published var log = ""
     private var session: NFCTagReaderSession?
+    /// Empty: unauthenticated probe. Set: PACE with this CAN, then secure reads.
+    private var can = ""
 
-    func start() {
+    func start(can: String = "") {
+        self.can = can
         guard NFCTagReaderSession.readingAvailable else { log = "NFC nije dostupan."; return }
         log = ""
         session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
@@ -54,6 +58,7 @@ extension Probe: NFCTagReaderSessionDelegate {
 
 extension Probe {
     func run(_ tag: NFCISO7816Tag) async {
+        if !can.isEmpty { await runPACE(tag); return }
         add("initialSelectedAID: \(tag.initialSelectedAID)")
         add("historicalBytes: \(tag.historicalBytes.map(hex) ?? "-") \(tag.historicalBytes.map(ascii) ?? "")")
         add("applicationData: \(tag.applicationData.map(hex) ?? "-")")
@@ -98,6 +103,44 @@ extension Probe {
         add("--- done")
     }
 
+    /// PACE-CAN inside the eSign application, then read its files through
+    /// secure messaging. Still no PIN.
+    private func runPACE(_ tag: NFCISO7816Tag) async {
+        let send: Transmit = { [unowned self] apdu in
+            guard let r = await self.raw(tag, hex(apdu)) else { throw PACEError.malformed("transport") }
+            return r
+        }
+        add("historicalBytes: \(tag.historicalBytes.map(ascii) ?? "-")")
+        _ = await tx(tag, "SELECT eSign", "00A4040C0AA000000167455349474E")
+        let t0 = Date()
+        let sm: SecureMessaging
+        do {
+            sm = try await PACE.establish(can: can, send: send) { [unowned self] in self.add("  " + $0) }
+        } catch {
+            add("PACE: \(error)")
+            return
+        }
+        add(String(format: "PACE %.2f s", Date().timeIntervalSince(t0)))
+        for sfi in 1...6 {
+            var all = Data()
+            var (d, sw) = (Data(), UInt16(0))
+            do {
+                (d, sw) = try await sm.transmit(Data([0x00, 0xB0, UInt8(0x80 | sfi), 0x00, 0xC0]), over: send)
+                all += d
+                while sw == 0x9000 && d.count == 0xC0 && all.count < 8192 {
+                    (d, sw) = try await sm.transmit(Data([0x00, 0xB0, UInt8(all.count >> 8), UInt8(all.count & 0xFF), 0xC0]), over: send)
+                    all += d
+                }
+            } catch {
+                add("SFI \(sfi): \(error)")
+                return
+            }
+            if sw == 0x6A82 && all.isEmpty { continue }
+            add("SFI \(sfi): \(String(format: "%04X", sw)) \(all.count) B \(hex(all))")
+        }
+        add("--- done")
+    }
+
     private func readEF(_ tag: NFCISO7816Tag, _ name: String, fid: String) async {
         _ = await tx(tag, "SELECT MF", "00A4000C023F00")
         guard let sw = await tx(tag, "SELECT \(name)", "00A4020C02" + fid), sw == 0x9000 else { return }
@@ -120,7 +163,7 @@ extension Probe {
         return sw
     }
 
-    private func raw(_ tag: NFCISO7816Tag, _ apdu: String) async -> (Data, UInt16)? {
+    fileprivate func raw(_ tag: NFCISO7816Tag, _ apdu: String) async -> (Data, UInt16)? {
         guard let cmd = NFCISO7816APDU(data: bytes(apdu)) else { return nil }
         do {
             let (d, s1, s2) = try await tag.sendCommand(apdu: cmd)
