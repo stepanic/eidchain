@@ -1,6 +1,6 @@
 # Croatian eOI over NFC: can a phone replace the USB reader?
 
-Status on 2026-11-04. This is web research only. Nobody has tested a card yet.
+Status on 2026-11-04. Web research plus the security target. Nobody has tested a card over NFC yet.
 
 ## Why this matters
 
@@ -15,7 +15,12 @@ If the eOI's eID applet answered over NFC with PACE, the same approach would wor
 | eOI Gen 2 v2 (issued since 2025-05-12) has a **dual-interface** chip, NXP P71 JCOP4.5 | official | [AKD brochure](https://www.akd.hr/datastore/file/972/brosura-OI_gen-2-v-2.pdf) |
 | Chip carries three applets: "AKD eID card 2.0" (SSCD), the MRTD travel applet, and a health applet | official | same brochure |
 | Our card's ATR historical bytes read `AKDeID2.0-SSCD` | measured by us | [web-eid doc](2026-11-04-web-eid-newer-croatian-eoi-macos.md) |
-| Brochure calls the eID part a "certified **contact** chip", which hints that the SSCD certification covers only the contact interface | inferred | brochure |
+| Brochure calls the eID part a "certified **contact** chip". The security target below contradicts the reading that the SSCD is contact-only | superseded | brochure |
+| The SSCD applet is certified as a "contact/contactless/dual interface" product and supports T=1 (ISO 7816-3) **and T=CL (ISO 14443)** | official, CC certified | [ST Lite AKD eID 2.0 SSCD v2.4](https://sec-certs.org/cc/5a7ffad9f27b5ca5/target.pdf), NSCIB-CC-2300144-01, EAL4+ AVA_VAN.5, valid to 2029-09-30 |
+| The applet implements **PACE with CAN or MRZ** (generic mapping, ECDH on Brainpool/NIST P-256/384) followed by AES secure messaging (CBC + CMAC), per EN 419212-2 clauses 8 and 9 | official, CC certified | same ST |
+| Which authentication methods are active (PIN, PACE-CAN, ...) is chosen at **personalisation**. The ST certifies the capability, not the Croatian profile | official | same ST, "During the personalization of the TOE, knowledge, biometric and PACE authentication can be configured" |
+| Applet interfaces follow EN 419212 (the same standard family as other EU eID cards), not a proprietary protocol | official | same ST |
+| A 6-digit CAN is printed on the front of our card (bottom right) | observed by us | the card |
 | MRTD data (name, photo) is readable over NFC (Airbnb lists Croatian ID cards for NFC verification) | third party | [Airbnb help](https://hr.airbnb.com/help/article/4077) |
 | Certilia mobile.ID does **not** use the card over NFC. Activation is by a QR code issued at the police counter, and the signing key is a remote certificate | official / third party | [eid.hr mobilni identitet](https://www.eid.hr/hr/mobilni-identitet), [MUP eOI](https://mup.gov.hr/osobna-iskaznica-eoi/328) |
 | In 2021, phone-NFC use of the eID functions was "dependent on a pilot". No follow-up found | third party | [bug.hr 2021](https://www.bug.hr/propisi/stizu-nove-osobne-iskaznice-s-vise-digitalnih-mogucnosti-17757) |
@@ -25,12 +30,16 @@ For comparison, the Slovenian eOI prints a CAN on the front and works with OpenS
 
 ## Verdict
 
-**Unknown, and probably not.** The hardware could do it, since the chip is dual-interface. But there is no evidence that AKD exposes the eID/SSCD applet over the contactless interface. The official mobile identity (Certilia) deliberately avoids the card. The only confirmed use of NFC is passport-style MRTD reading, which proves identity data but gives us no signature. That is not enough for eidchain.
+**Probably yes, still to be proved on a card.** The earlier verdict ("probably not") rested on the brochure's word "contact". The CC security target says otherwise: the signing applet itself is certified for the contactless interface and for PACE-CAN with secure messaging, which is exactly the Estonian model. The card also carries a printed CAN. What remains open is whether Croatia's personalisation profile enables the applet over NFC, and with which PACE parameters. Only a card test answers that.
+
+The official mobile identity (Certilia) still avoids the card, so there is no Croatian app to copy. We would write the card layer ourselves on top of EN 419212.
 
 ## How to settle it
 
-1. **Check the card front for a 6-digit CAN.** If there is none, PACE-CAN is unlikely for any applet. MRTD access would then use BAC/PACE with the MRZ.
-2. **Contactless reader test** (any PC/SC NFC reader, e.g. ACR1252U, or Android with an APDU tool): read `EF.CardAccess` (FID `011C`) under the MF. It lists the PACE parameters if PACE is supported. Then try to SELECT the AKD eID applet with the same AID that Certilia middleware uses over the contact interface (capture it with a PC/SC trace). If it is refused, or only answers after PACE, that is the answer.
-3. **Authoritative source:** the Common Criteria security target for NSCIB-CC-2300144-01 ([sec-certs](https://sec-certs.org/cc/2fdb7ebde10e8402/target.pdf)). It should state which interfaces the SSCD is certified for. We have not read it yet. Alternatively, ask AKD directly.
+1. ~~Check the card front for a 6-digit CAN.~~ Done: it is there.
+2. **Contactless test.** We have no PC/SC NFC reader, so it runs on an Android phone: read `EF.CardAccess` (FID `011C`) under the MF. It lists the PACE parameters if PACE is supported. Then try to SELECT the AKD eID applet with the same AID that Certilia middleware uses over the contact interface (capture it with a PC/SC trace). If it is refused, or only answers after PACE, that is the answer.
+3. ~~Read the security target.~~ Done, see above. Note: the sec-certs link previously given here (`2fdb7ebde10e8402`) is NXP's ChipDoc v4 ICAO/MRTD target (ANSSI-CC-2023/11-R01), not the AKD SSCD. The correct one is `5a7ffad9f27b5ca5`.
+
+Do not guess PINs while testing. The PIN retry counters are real, and a blocked PIN means a trip to the police counter. Use the CAN for PACE, and only VERIFY the PIN once the applet and its key references are known.
 
 If step 2 succeeds, the next step is to port the Estonian NFC library's card layer to the AKD applet. The Web eID token format and server-side validation can stay as they are.
