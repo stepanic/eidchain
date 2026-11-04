@@ -85,6 +85,13 @@ func (n *Node) syncPeer(ctx context.Context, p *remote.Client) {
 	sctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	res, err := remote.Sync(sctx, n.store, p, nil)
 	cancel()
+	if err == nil {
+		// Learned before nodes stated their own address. The exchange below still
+		// runs once, which brings in the real one.
+		if aerr := n.aliasError(p.Base, res.Remote); aerr != nil && n.forgetLearned(p.Base) {
+			log.Printf("peer %s dropped: %v", p.Base, aerr)
+		}
+	}
 	n.recordPeerResult(p.Base, err)
 	if err == nil {
 		n.exchange(ctx, p)

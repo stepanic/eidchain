@@ -156,6 +156,7 @@ func (n *Node) info() remote.Info {
 		NextBlockAt:          nextBoundary(time.Now(), n.opt.BlockInterval).Unix(),
 		CanProduce:           can,
 		SigningKeys:          keys,
+		Advertise:            n.selfURL,
 		Features:             n.store.P.Features,
 		StartedAt:            n.started.Unix(),
 		UptimeSeconds:        int64(time.Since(n.started) / time.Second),

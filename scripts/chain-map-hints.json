@@ -1,14 +1,4 @@
 {
-  "https://eidchain.domovina.ai/chain": {
-    "host": "i9.local",
-    "keys": ["ec820b5b", "20a17442", "42a13b2a", "69007f4b"]
-  },
-  "https://eidchain-i9.domovina.ai/chain": {
-    "host": "i9.local",
-    "keys": ["ec820b5b", "20a17442", "42a13b2a", "69007f4b"]
-  },
-  "https://eidchain-mini.domovina.ai/chain": {
-    "host": "Mac Mini (ffhr.local)",
-    "keys": ["0b26a5a7"]
-  }
+  "https://eidchain-i9.domovina.ai/chain": {"host": "i9.local"},
+  "https://eidchain-mini.domovina.ai/chain": {"host": "Mac Mini (ffhr.local)"}
 }

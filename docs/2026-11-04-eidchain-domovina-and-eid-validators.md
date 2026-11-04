@@ -10,8 +10,8 @@ Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-
 - Schedule: `block-timestamps` from 1, `authority-changes` and `eid-validators` from 3.
 - Blocks 1 and 2 are messages signed with Matija's eOI. Block 3 registers his first validator key, `69007f4b…` (i9). Block 4 (16:40) registers the Mac Mini key `0b26a5a7…` and is signed by `69007f4b`, which made it active. `0b26a5a7` is a candidate until it signs.
 - Voters after block 4: N=4 (3 genesis keys + Matija), window 2, rotation quorum 3. The genesis keys still hold the majority from one machine.
-- Two public nodes: i9.local (`eidchain.domovina.ai`, to become `eidchain-i9.domovina.ai` with the short name as alias) and the Mac Mini ffhr.local (`eidchain-mini.domovina.ai`, tunnel `eidchain-mini` `1435a18d…`, same `/opt/eidchain` layout and uid 471).
-- `python3 -I scripts/chain-map.py --pdf` draws the current nodes and keys into `docs/chain-map.md`.
+- Two public nodes: i9.local (`eidchain-i9.domovina.ai`, also serving the short `eidchain.domovina.ai` as an alias) and the Mac Mini ffhr.local (`eidchain-mini.domovina.ai`, tunnel `eidchain-mini` `1435a18d…`, same `/opt/eidchain` layout and uid 471).
+- `python3 -I scripts/chain-map.py --pdf` (on i9 with `SSL_CERT_FILE=/etc/ssl/cert.pem`: the python.org build has no CA certificates) draws the current nodes and keys into `docs/chain-map.md`.
 
 ```mermaid
 flowchart LR
@@ -20,7 +20,7 @@ flowchart LR
   CFD --> NG[nginx 127.0.0.1:8096<br/>rate limit, body caps]
   NG --> N[eidchain node 127.0.0.1:8095]
   CF -->|tunnel eidchain-mini 1435a18d…| M[Mac Mini: cloudflared, nginx, node<br/>same ports as i9]
-  M -->|peer: eidchain.domovina.ai| CF
+  M -->|peer: eidchain-i9.domovina.ai| CF
 ```
 
 On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovina.eidchain.{node,nginx,tunnel}` as user `_eidchain` (uid 471). The Gnosis node shares the machine, with its own tunnel `acutis` and metrics on 20241. A backup of the seed (genesis, config, the 3 genesis keys) is in `~/eidchain-domovina/seed/`. It should go to offline storage and then be deleted from there.
@@ -43,15 +43,17 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - **SSH push to GitHub failed during an outage.** HTTPS with the gh credential helper worked.
 - **There's no `sudo` without a person.** Everything under `/opt` was prepared as a script for the user to run.
 - **Port 8080 on the Mac Mini belongs to the WhatsApp MCP.** `join.sh` runs the node on the default `:8080` and would fail there. The temporary node ran on `127.0.0.1:8097`; the installed one uses 8095/8096 like i9.
-- **First announcement after install fails with 1033.** The node starts before its tunnel connects, so the peer cannot reach it back (HTTP 422 wrapping 530). A failure used to wait 30 minutes for the retry; now 2.
+- **First announcement after install fails with 1033.** The node starts before its tunnel connects, so the peer cannot reach it back (HTTP 422 wrapping 530). A failure used to wait 30 minutes for the retry; now 2. The peer also remembered the failed address for 10 minutes and answered the retry with "recently failed verification"; that memory is now 2 minutes too.
+- **A node learned its own alias as a peer.** Once i9 advertised `eidchain-i9`, the short `eidchain.domovina.ai` came back through the Mac Mini's peer list and i9 synced with itself; the Mac Mini held i9 twice. Nodes now state their address in `/api/v1/info` (`advertise`), and a peer reached under another name is refused, or dropped if learned earlier.
 - **Never `cloudflared tunnel route dns` a two-level name** like `mini.eidchain.domovina.ai`: the free Universal SSL covers `*.domovina.ai` only. Hence `eidchain-mini`, `eidchain-i9`.
 - **SSH from the Mac Mini to i9 (`i9.domovina.link` via `cloudflared access ssh`) fails with "websocket: bad handshake"**, so i9 changes are run by hand on i9.
 
 ## Open
 
 - [x] Key `69007f4b…` active (block 4). Mac Mini node public, key `0b26a5a7…` registered.
-- [ ] i9: `git pull`, build, `DOMAIN=eidchain-i9.domovina.ai` + `ALIASES=eidchain.domovina.ai` in `eidchain.env`, `sudo deploy/macos/install.sh install`. DNS for `eidchain-i9` already points at tunnel `eidchain`. Then drop `scripts/chain-map-hints.json` once both nodes report `signingKeys`.
-- [ ] Check that `0b26a5a7` signs a block and that Matija's two keys take turns as one voter (the second may not sign while the first is in the window).
+- [x] i9 advertises `eidchain-i9.domovina.ai` with the short name as alias, peer `eidchain-mini` configured. Both nodes report `signingKeys`; the hints only name the machines now.
+- [ ] Deploy the alias fix on both nodes (i9: build + `sudo deploy/macos/install.sh install`; Mac Mini the same), so neither keeps `eidchain.domovina.ai` as a peer.
+- [ ] Check that `0b26a5a7` signs a block (needs a pending message, so a card signature) and that Matija's two keys take turns as one voter (the second may not sign while the first is in the window).
 - [x] `join.sh`: `LISTEN`, default `127.0.0.1:8097`, checked before the build.
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.

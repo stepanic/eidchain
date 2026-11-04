@@ -12,8 +12,9 @@ by hand is wrong within days. Every run reflects the moment it ran.
 What it can and cannot know: nodes are found by following GET /api/v1/peers
 from the seeds, so only nodes with a public address appear (a node behind NAT
 without --advertise is invisible to everyone, this script included). Which
-keys a node holds comes from `signingKeys` in its /api/v1/info; nodes built
-before that field fall back to scripts/chain-map-hints.json.
+keys a node holds comes from `signingKeys` in its /api/v1/info. A node does
+not say which machine it runs on, so scripts/chain-map-hints.json names those
+("host"); it can also list "keys" for a node built before `signingKeys`.
 """
 import argparse
 import base64

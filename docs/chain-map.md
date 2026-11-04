@@ -1,6 +1,6 @@
 # eidchain: čvorovi i ključevi
 
-Generirano **04.11.2026. 16:44 (CET)** skriptom `scripts/chain-map.py`. Ne uređivati ručno: svako pokretanje prepisuje dokument stanjem lanca u tom trenutku.
+Generirano **04.11.2026. 16:50 (CET)** skriptom `scripts/chain-map.py`. Ne uređivati ručno: svako pokretanje prepisuje dokument stanjem lanca u tom trenutku.
 
 - Lanac `70659df25175`, visina **4**, head `9c05177d5b80`
 - Javnih čvorova: **2** od 2 poznatih
@@ -14,9 +14,9 @@ Strelica A → B: A ima B na popisu peerova, pa gura blokove prema B i povlači 
 
 ```mermaid
 flowchart LR
-  https___eidchain_domovina_ai_chain["eidchain.domovina.ai<br/>i9.local<br/>visina 4, head 9c05177d"]
+  https___eidchain_i9_domovina_ai_chain["eidchain-i9.domovina.ai<br/>i9.local<br/>visina 4, head 9c05177d"]
   https___eidchain_mini_domovina_ai_chain["eidchain-mini.domovina.ai<br/>Mac Mini (ffhr.local)<br/>visina 4, head 9c05177d"]
-  https___eidchain_mini_domovina_ai_chain --> https___eidchain_domovina_ai_chain
+  https___eidchain_i9_domovina_ai_chain --> https___eidchain_mini_domovina_ai_chain
 ```
 
 ## Ključevi, osobe i čvorovi
@@ -25,7 +25,7 @@ Glas ima osoba (eID) ili ključ bez osobe (genesis). Svi ključevi jedne osobe s
 
 ```mermaid
 flowchart LR
-  subgraph https___eidchain_domovina_ai_chain["i9.local"]
+  subgraph https___eidchain_i9_domovina_ai_chain["i9.local"]
     kec820b5b(["ec820b5b"])
     k20a17442(["20a17442"])
     k42a13b2a(["42a13b2a"])
@@ -49,17 +49,17 @@ flowchart LR
 
 | ključ | čiji | stanje | čvor | zadnji potpisani blok |
 |---|---|---|---|---|
-| `ec820b5b` | authority-1 | aktivan | eidchain.domovina.ai (iz hints) | 3 |
-| `20a17442` | authority-2 | aktivan | eidchain.domovina.ai (iz hints) | 2 |
-| `42a13b2a` | authority-3 | aktivan | eidchain.domovina.ai (iz hints) | — |
-| `69007f4b` | MATIJA STEPANIĆ | aktivan | eidchain.domovina.ai (iz hints) | 4 |
+| `ec820b5b` | authority-1 | aktivan | eidchain-i9.domovina.ai | 3 |
+| `20a17442` | authority-2 | aktivan | eidchain-i9.domovina.ai | 2 |
+| `42a13b2a` | authority-3 | aktivan | eidchain-i9.domovina.ai | — |
+| `69007f4b` | MATIJA STEPANIĆ | aktivan | eidchain-i9.domovina.ai | 4 |
 | `0b26a5a7` | MATIJA STEPANIĆ | kandidat | eidchain-mini.domovina.ai | — |
 
 ## Čvorovi
 
 | čvor | stanje | visina | čeka | potpisuje | radi od |
 |---|---|---|---|---|---|
-| eidchain.domovina.ai | može rezati blok | 4 | 0 | 4 | 04.11. 16:22 |
+| eidchain-i9.domovina.ai | može rezati blok | 4 | 0 | 4 | 04.11. 16:47 |
 | eidchain-mini.domovina.ai | čeka svoj red | 4 | 0 | 1 | 04.11. 16:43 |
 
 ## Zadnji blokovi

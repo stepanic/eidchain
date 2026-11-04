@@ -508,3 +508,34 @@ func mustBlock(t *testing.T, n *Node, h chain.Hash) *chain.Block {
 	}
 	return b
 }
+
+// A node may answer under a short alias besides the address it advertises.
+// Peers must not learn the alias: that would be the same node twice, or itself.
+func TestAliasesAreNotLearned(t *testing.T) {
+	ctx := context.Background()
+	w := newPeerWorld(t, "alias")
+	nodes, srvs := w.start(2, nil, nil)
+	aliasOf := func(i int) string {
+		s := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) { nodes[i].Handler().ServeHTTP(rw, r) }))
+		t.Cleanup(s.Close)
+		return s.URL
+	}
+	alias0, alias1 := aliasOf(0), aliasOf(1)
+
+	if _, err := nodes[0].addLearned(ctx, alias0); err == nil || !strings.Contains(err.Error(), "this node, under another name") {
+		t.Errorf("own alias: %v", err)
+	}
+	if _, err := nodes[0].addLearned(ctx, alias1); err == nil || !strings.Contains(err.Error(), "an alias of "+srvs[1].URL) {
+		t.Errorf("peer's alias: %v", err)
+	}
+
+	// One learned before nodes stated their address is dropped on the next sync,
+	// and the real address comes in through that node's /peers.
+	nodes[0].book.learned[alias1] = &learnedPeer{URL: alias1}
+	nodes[0].syncAll(ctx)
+	nodes[0].syncAll(ctx)
+	got := peerBases(nodes[0])
+	if got[alias1] || !got[srvs[1].URL] {
+		t.Errorf("after sync node 0 knows %v, want %s and not %s", got, srvs[1].URL, alias1)
+	}
+}

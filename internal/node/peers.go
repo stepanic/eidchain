@@ -38,11 +38,11 @@ const (
 	maxLearnedPeers    = 32
 	maxPeersPerHost    = 2 // learned peers on one host, so one server cannot fill the book
 	maxSharedPeers     = 20
-	maxPeerFailures    = 6                // consecutive failed syncs before a learned peer is dropped
-	reannounceEvery    = 30 * time.Minute // how often to repeat our announcement to a peer
-	retryAnnounceAfter = 2 * time.Minute  // after a failed announcement
-	announcePerMin     = 20               // announcements accepted per minute, in total
-	rejectedMemory     = 10 * time.Minute // how long a failed candidate is not retried
+	maxPeerFailures    = 6                  // consecutive failed syncs before a learned peer is dropped
+	reannounceEvery    = 30 * time.Minute   // how often to repeat our announcement to a peer
+	retryAnnounceAfter = 2 * time.Minute    // after a failed announcement
+	announcePerMin     = 20                 // announcements accepted per minute, in total
+	rejectedMemory     = retryAnnounceAfter // how long a failed candidate is not retried; no longer, or a retried announcement meets its own failure
 )
 
 type learnedPeer struct {
@@ -221,6 +221,19 @@ func (n *Node) allPeers() []*remote.Client {
 	return out
 }
 
+// forgetLearned removes a learned peer and says whether there was one. Peers
+// named by the operator are never forgotten.
+func (n *Node) forgetLearned(base string) bool {
+	n.book.mu.Lock()
+	defer n.book.mu.Unlock()
+	if n.book.learned[base] == nil {
+		return false
+	}
+	delete(n.book.learned, base)
+	n.book.saveLocked()
+	return true
+}
+
 // recordPeerResult tracks how a learned peer is doing and drops it when it keeps failing.
 func (n *Node) recordPeerResult(base string, err error) {
 	if errors.Is(err, context.Canceled) {
@@ -241,7 +254,8 @@ func (n *Node) recordPeerResult(base string, err error) {
 	n.book.saveLocked()
 }
 
-// verifyPeer fetches the candidate's /info and checks it serves our chain.
+// verifyPeer fetches the candidate's /info and checks it serves our chain under
+// the address it goes by.
 func (n *Node) verifyPeer(ctx context.Context, base string) error {
 	c := remote.New(base)
 	c.HTTP = n.safeHTTP
@@ -255,7 +269,22 @@ func (n *Node) verifyPeer(ctx context.Context, base string) error {
 	if !n.store.P.Features.Equal(info.Features) {
 		return errors.New("it has a different feature schedule")
 	}
-	return nil
+	return n.aliasError(base, info)
+}
+
+// aliasError refuses a peer reached under another name than the one it
+// advertises: a node may serve a short alias for people besides its own
+// address, and learning both would sync with one node twice, or with itself.
+// The real address comes in through that node's own /peers.
+func (n *Node) aliasError(base string, info remote.Info) error {
+	canon, err := normalizePeerURL(info.Advertise)
+	if err != nil || canon == base {
+		return nil // not advertising, so the address is all we know it by
+	}
+	if canon == n.selfURL {
+		return errors.New("that is this node, under another name")
+	}
+	return fmt.Errorf("an alias of %s", canon)
 }
 
 var (

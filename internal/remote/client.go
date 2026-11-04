@@ -35,6 +35,7 @@ type Info struct {
 	NextBlockAt          int64          `json:"nextBlockAt"`
 	CanProduce           bool           `json:"canProduce"`
 	SigningKeys          []string       `json:"signingKeys,omitempty"` // IDs of the keys this node signs with
+	Advertise            string         `json:"advertise,omitempty"`   // the address the node goes by; it may answer under others too
 	TrustAnchors         []string       `json:"trustAnchors"`          // subjects of the eID CA certificates fixed in the genesis
 	Features             chain.Schedule `json:"features,omitempty"`
 	StartedAt            int64          `json:"startedAt"`
