@@ -1,6 +1,6 @@
 # eidchain: čvorovi i ključevi
 
-Generirano **04.11.2026. 16:50 (CET)** skriptom `scripts/chain-map.py`. Ne uređivati ručno: svako pokretanje prepisuje dokument stanjem lanca u tom trenutku.
+Generirano **04.11.2026. 16:54 (CET)** skriptom `scripts/chain-map.py`. Ne uređivati ručno: svako pokretanje prepisuje dokument stanjem lanca u tom trenutku.
 
 - Lanac `70659df25175`, visina **4**, head `9c05177d5b80`
 - Javnih čvorova: **2** od 2 poznatih
@@ -17,6 +17,7 @@ flowchart LR
   https___eidchain_i9_domovina_ai_chain["eidchain-i9.domovina.ai<br/>i9.local<br/>visina 4, head 9c05177d"]
   https___eidchain_mini_domovina_ai_chain["eidchain-mini.domovina.ai<br/>Mac Mini (ffhr.local)<br/>visina 4, head 9c05177d"]
   https___eidchain_i9_domovina_ai_chain --> https___eidchain_mini_domovina_ai_chain
+  https___eidchain_mini_domovina_ai_chain --> https___eidchain_i9_domovina_ai_chain
 ```
 
 ## Ključevi, osobe i čvorovi
@@ -59,8 +60,8 @@ flowchart LR
 
 | čvor | stanje | visina | čeka | potpisuje | radi od |
 |---|---|---|---|---|---|
-| eidchain-i9.domovina.ai | može rezati blok | 4 | 0 | 4 | 04.11. 16:47 |
-| eidchain-mini.domovina.ai | čeka svoj red | 4 | 0 | 1 | 04.11. 16:43 |
+| eidchain-i9.domovina.ai | može rezati blok | 4 | 0 | 4 | 04.11. 16:52 |
+| eidchain-mini.domovina.ai | čeka svoj red | 4 | 0 | 1 | 04.11. 16:54 |
 
 ## Zadnji blokovi
 

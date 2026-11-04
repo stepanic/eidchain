@@ -52,7 +52,7 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 
 - [x] Key `69007f4b…` active (block 4). Mac Mini node public, key `0b26a5a7…` registered.
 - [x] i9 advertises `eidchain-i9.domovina.ai` with the short name as alias, peer `eidchain-mini` configured. Both nodes report `signingKeys`; the hints only name the machines now.
-- [ ] Deploy the alias fix on both nodes (i9: build + `sudo deploy/macos/install.sh install`; Mac Mini the same), so neither keeps `eidchain.domovina.ai` as a peer.
+- [x] Alias fix deployed on both nodes (16:52 i9, 16:54 Mac Mini): each lists only the other, under its own name.
 - [ ] Check that `0b26a5a7` signs a block (needs a pending message, so a card signature) and that Matija's two keys take turns as one voter (the second may not sign while the first is in the window).
 - [x] `join.sh`: `LISTEN`, default `127.0.0.1:8097`, checked before the build.
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
