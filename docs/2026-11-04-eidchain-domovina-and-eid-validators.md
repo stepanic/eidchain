@@ -8,8 +8,10 @@ Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-
 
 - Genesis `70659df25175…beec8` (public copy in `genesis/domovina-genesis.json`). The 3 genesis keys sit on one host, i9.local, so the "majority" there is one machine.
 - Schedule: `block-timestamps` from 1, `authority-changes` and `eid-validators` from 3.
-- Blocks 1 and 2 are messages signed with Matija's eOI. Block 3 registers his first validator key, `69007f4b…`, from `/opt/eidchain/data/keys/validator.key`. At the time of writing it is a candidate. It counts once it signs a block, which needs a pending message.
-- The second validator key is meant for the Mac Mini, via `deploy/macos/join.sh`.
+- Blocks 1 and 2 are messages signed with Matija's eOI. Block 3 registers his first validator key, `69007f4b…` (i9). Block 4 (16:40) registers the Mac Mini key `0b26a5a7…` and is signed by `69007f4b`, which made it active. `0b26a5a7` is a candidate until it signs.
+- Voters after block 4: N=4 (3 genesis keys + Matija), window 2, rotation quorum 3. The genesis keys still hold the majority from one machine.
+- Two public nodes: i9.local (`eidchain.domovina.ai`, to become `eidchain-i9.domovina.ai` with the short name as alias) and the Mac Mini ffhr.local (`eidchain-mini.domovina.ai`, tunnel `eidchain-mini` `1435a18d…`, same `/opt/eidchain` layout and uid 471).
+- `python3 -I scripts/chain-map.py --pdf` draws the current nodes and keys into `docs/chain-map.md`.
 
 ```mermaid
 flowchart LR
@@ -17,7 +19,8 @@ flowchart LR
   CF -->|tunnel eidchain 7b43ab17…| CFD[cloudflared<br/>metrics 127.0.0.1:20242]
   CFD --> NG[nginx 127.0.0.1:8096<br/>rate limit, body caps]
   NG --> N[eidchain node 127.0.0.1:8095]
-  M[Mac Mini node] -->|pull + push| CF
+  CF -->|tunnel eidchain-mini 1435a18d…| M[Mac Mini: cloudflared, nginx, node<br/>same ports as i9]
+  M -->|peer: eidchain.domovina.ai| CF
 ```
 
 On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovina.eidchain.{node,nginx,tunnel}` as user `_eidchain` (uid 471). The Gnosis node shares the machine, with its own tunnel `acutis` and metrics on 20241. A backup of the seed (genesis, config, the 3 genesis keys) is in `~/eidchain-domovina/seed/`. It should go to offline storage and then be deleted from there.
@@ -39,11 +42,17 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - **`nginx -t` without `-e` warns about the compiled-in error log path.** Pass `-e` to the test and to the plist.
 - **SSH push to GitHub failed during an outage.** HTTPS with the gh credential helper worked.
 - **There's no `sudo` without a person.** Everything under `/opt` was prepared as a script for the user to run.
+- **Port 8080 on the Mac Mini belongs to the WhatsApp MCP.** `join.sh` runs the node on the default `:8080` and would fail there. The temporary node ran on `127.0.0.1:8097`; the installed one uses 8095/8096 like i9.
+- **First announcement after install fails with 1033.** The node starts before its tunnel connects, so the peer cannot reach it back (HTTP 422 wrapping 530). A failure used to wait 30 minutes for the retry; now 2.
+- **Never `cloudflared tunnel route dns` a two-level name** like `mini.eidchain.domovina.ai`: the free Universal SSL covers `*.domovina.ai` only. Hence `eidchain-mini`, `eidchain-i9`.
+- **SSH from the Mac Mini to i9 (`i9.domovina.link` via `cloudflared access ssh`) fails with "websocket: bad handshake"**, so i9 changes are run by hand on i9.
 
 ## Open
 
-- [ ] Key `69007f4b…` signs its first block and becomes active. That needs one message on the chain.
-- [ ] Mac Mini: `join.sh`, sign the second key, check that the two keys take turns as one voter. Expected: the second key may not sign while the first is in the window.
+- [x] Key `69007f4b…` active (block 4). Mac Mini node public, key `0b26a5a7…` registered.
+- [ ] i9: `git pull`, build, `DOMAIN=eidchain-i9.domovina.ai` + `ALIASES=eidchain.domovina.ai` in `eidchain.env`, `sudo deploy/macos/install.sh install`. DNS for `eidchain-i9` already points at tunnel `eidchain`. Then drop `scripts/chain-map-hints.json` once both nodes report `signingKeys`.
+- [ ] Check that `0b26a5a7` signs a block and that Matija's two keys take turns as one voter (the second may not sign while the first is in the window).
+- [ ] `join.sh`: a `LISTEN` setting, since `:8080` is often taken.
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
 - [ ] Back up the 3 genesis keys offline. Later, remove them by rotation once enough eID validators are counted.
