@@ -36,7 +36,12 @@ func newSigner(t *testing.T) chain.Signer {
 // register is a registration of key, signed with card.
 func (e *env) register(card leaf, key chain.Signer) chain.PayloadEntry {
 	e.t.Helper()
-	text, err := chain.NewRegistration(e.genesis.Hash(), key, time.Now())
+	return e.registration(card, &key, "")
+}
+
+func (e *env) registration(card leaf, key *chain.Signer, retire string) chain.PayloadEntry {
+	e.t.Helper()
+	text, err := chain.NewRegistration(e.genesis.Hash(), key, retire, time.Now())
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -107,19 +112,43 @@ func TestValidatorRegistration(t *testing.T) {
 		t.Fatalf("after signing: IDs %v, candidates %v", st.IDs, st.Candidates)
 	}
 
-	// The same person registering again replaces the key, in its place.
+	// The same person may run a second node with its own key. Both keys are one
+	// voter: b may not sign while a's block is within the window,
 	e.add(e.at(now, s[2], e.register(pero, b)))
+	e.refused(e.at(now, b, e.payload("pero again")), "same person")
+	e.add(e.at(now, s[0], e.payload("between")))
+	// but may once it is out of it. Then both count, as one.
+	e.add(e.at(now, b, e.payload("from b")))
 	st = e.store.HeadState()
-	if st.Has(a.ID) || !st.Active(b.ID) || len(st.IDs) != 4 || st.IDs[3] != b.ID {
-		t.Fatalf("after re-registering: IDs %v", st.IDs)
+	if !st.Active(a.ID) || !st.Active(b.ID) || len(st.IDs) != 5 || st.Voters() != 4 || st.SignerWindow() != 2 {
+		t.Fatalf("two keys of one person: IDs %d, voters %d", len(st.IDs), st.Voters())
 	}
-	e.refused(e.at(now, a, e.payload("old key")), "not a currently valid authority")
+	// Approvals from both keys count once.
+	rot := approved(t, chain.KeyChange{Type: "remove", Chain: e.genesis.Hash(), Seq: 0, Old: s[2].ID}, a, b, s[0])
+	if n, q := st.Approvals(rot), e.store.P.Quorum(st, 10); n != 2 || q != 3 {
+		t.Fatalf("approvals %d, quorum %d", n, q)
+	}
+
+	// A person retires only their own keys.
+	e.refused(e.at(now, s[1], e.registration(ana, nil, a.ID)), "not one of yours")
+	e.add(e.at(now, s[1], e.registration(pero, nil, a.ID)))
+	if st = e.store.HeadState(); st.Has(a.ID) || !st.Active(b.ID) || st.Voters() != 4 {
+		t.Fatalf("after retiring: IDs %v", st.IDs)
+	}
+	e.refused(e.at(now, a, e.payload("retired")), "not a currently valid authority")
+
+	// Registering a key again with a new card renews it.
+	newCard := e.pki.LeafUntil(t, pkix.Name{CommonName: "OSOBA 11111111111", SerialNumber: "PNOHR-11111111111"}, now.Add(72*time.Hour))
+	e.add(e.at(now, s[2], e.register(newCard, b)))
+	if st = e.store.HeadState(); st.Holders[b.ID].NotAfter != newCard.Cert.NotAfter.Unix() || !st.Active(b.ID) {
+		t.Fatalf("not renewed: %+v", st.Holders[b.ID])
+	}
 
 	// A counted key that stops signing stops being counted.
 	for i := range chain.IdleBlocks(st) {
 		e.add(e.at(now, s[int(i)%3], e.payload("filler "+string(rune('a'+i%26))+string(rune('a'+i/26)))))
 	}
-	if st = e.store.HeadState(); st.Active(b.ID) || !slices.Contains(st.Candidates, b.ID) || len(st.IDs) != 3 {
+	if st = e.store.HeadState(); st.Active(b.ID) || !slices.Contains(st.Candidates, b.ID) || len(st.IDs) != 3 || st.Voters() != 3 {
 		t.Fatalf("after idling: IDs %v, candidates %v", st.IDs, st.Candidates)
 	}
 	// and counts again once it signs.

@@ -16,7 +16,7 @@ The repository also holds the website that runs at `eidchain.ivoras.net` (`www/`
 - **One static binary.** The example web app (HTML/JS/CSS) and the default eID CA certificates are embedded with `go:embed`; nothing is read from disk at runtime except your data directory.
 - **Proof of authority with any-key-signs-any-block.** Any key in the authority set may sign any block. Forks are resolved by *highest chain wins, ties broken by the lowest block hash*. A key may not sign if it signed one of the previous `floor(N/2)` blocks (the Clique rule), so rewriting history takes a majority of the keys.
 - **Authority key rotation inside the chain.** A block may carry `rotations`: control messages that replace one authority key with another, or, with the `authority-changes` feature, add or remove one. They must be approved by at least a quorum (default: a majority) of the keys that are valid *at that point in the chain*, and they take effect from the next block. Old blocks stay valid under the keys that were current when they were signed.
-- **Validators registered with an eID card.** With the `eid-validators` feature anyone with an eID card can make their node's key a validator, without anyone's approval. One person holds one key at a time. See [eID validators](#eid-validators).
+- **Validators registered with an eID card.** With the `eid-validators` feature anyone with an eID card can make their nodes' keys validators, without anyone's approval. All of a person's keys count as one voter. See [eID validators](#eid-validators).
 - **eID-signed payloads.** A payload is a JSON object (at most 10 KiB). Its signature is a detached CAdES-B-B CMS signature over the exact payload bytes, made by the signing certificate on the card. Every node re-verifies the signature and the certificate chain.
 - **Configurable eID CAs.** The trusted CA certificates are chosen when a chain is created (default: the Croatian AKDCA Root, HRIDCA and HRIDCA 2025, embedded). Certificates from other EU countries can be added in the config file.
 - **OCSP at submission.** When a payload is submitted, the node asks the signer certificate's OCSP responder and fails closed. The signed OCSP response is stored in the block next to the payload so anyone can audit it later (it is committed to by the block hash but is *not* a block validity rule, because revocation answers change over time).
@@ -144,7 +144,7 @@ A node accepts a block only if all of these hold:
 
 0. The JSON it arrived in is unambiguous (no duplicate keys, exact-case field names, no unknown fields).
 1. The `version` is the one the [feature schedule](#features) requires at this height, it builds on a known parent, height is parent + 1, and `time` is not before the parent's and not more than 5 minutes in the future.
-2. The signer is an authority **in the parent's authority state** and did not sign any of the previous `floor(N/2)` blocks, where N is the number of keys counted in that state. From the `eid-validators` height the signer may also be a candidate, and its holder's certificate must not have expired by the block's `time`. The block signature is valid.
+2. The signer is an authority **in the parent's authority state**, and neither it nor another key of the same person signed any of the previous `floor(N/2)` blocks, where N is the number of voters counted in that state: each eID-registered person is one voter, each other key is one. From the `eid-validators` height the signer may also be a candidate, and its holder's certificate must not have expired by the block's `time`. The block signature is valid.
 3. `payloadCount`, `rotationCount`, `payloadsRoot` and `rotationsRoot` match the body, and the block's JSON is at most 8 MiB. From the `block-timestamps` height, it carries a valid [timestamp](#block-timestamps).
 4. Every payload: valid UTF-8, a JSON object with no duplicate or case-variant keys at any level, within the size cap; a valid detached CAdES-B-B signature (RSA PKCS#1 v1.5 or ECDSA with SHA-256/384/512; RSA-PSS is not supported); the signer certificate chains to the genesis trust anchors **judged at the block's timestamp**; non-repudiation key usage if the genesis requires it; no payload that already appears in the block or in its ancestors.
 5. Every rotation: for this chain, `seq` equals the number of rotations applied so far (no replays), replaces a current authority with a new P-256 key that is not already one (or, from the `authority-changes` height, adds such a key or removes a current authority other than the last one), and carries valid approvals from at least the quorum of distinct keys of the parent's state.
@@ -171,7 +171,7 @@ A feature is a change to the block format or the consensus rules that starts at 
 | --- | --- | --- |
 | `block-timestamps` | 2 | A timestamp in every block, covered by the block hash |
 | `authority-changes` | 3 | Rotations may add and remove authority keys; the rotation quorum is a majority of the current keys |
-| `eid-validators` | 4 | eID card holders register validator keys themselves; keys count once they sign and stop counting when idle (needs `authority-changes`) |
+| `eid-validators` | 4 | eID card holders register validator keys themselves; a person's keys are one voter; keys count once they sign and stop counting when idle (needs `authority-changes`) |
 
 A height of `null` means the feature never applies. That has the same effect as leaving it out, and nodes treat the two as the same schedule, but it records the decision. To turn a feature off, the height must be above every existing block that uses it, or `null` will make those blocks invalid.
 
@@ -225,7 +225,7 @@ Once the quorum is reached, the next block a node cuts includes the rotation.
 
 ### eID validators
 
-The `eid-validators` feature opens the authority set to anyone with an eID card, while keeping it at one key per person. That is what stops one party from simply adding keys until it holds a majority: a key costs a card, and a state issues one card per person.
+The `eid-validators` feature opens the authority set to anyone with an eID card, while keeping it at one vote per person. That is what stops one party from simply adding keys until it holds a majority: a vote costs a card, and a state issues one card per person.
 
 The card does not sign blocks. A block needs a signature every few minutes, without a person at the reader to type a PIN, so the node signs with its own key, as authorities always have. The card signs once, a record that names that key:
 
@@ -240,17 +240,15 @@ eidchain validator request --data /path/to/data --server https://node.example/ch
 The record is a payload like any other, so it goes through the same signature, certificate and OCSP checks, and it is public:
 
 ```json
-{"type":"validator","chain":"<genesis hash>","key":"<base64 SPKI>","proof":"<signature by the key>","created":"…"}
+{"type":"validator","chain":"<genesis hash>","key":"<base64 SPKI>","proof":"<signature by the key>","retire":"<key ID>","created":"…"}
 ```
 
-`proof` is the key's signature over the chain and itself, so nobody can register a key they do not hold.
+`proof` is the key's signature over the chain and itself, so nobody can register a key they do not hold. `retire` is optional and drops one of the person's own keys; a record may also only retire (`eidchain validator retire KEY-ID`).
 
-- **One person, one key.** The person is the certificate subject's `serialNumber`, which on national eID cards is the personal ID number (`PNOHR-` and the OIB): it stays the same when a card is replaced. Certificates without a personal ID number cannot register. Registering a new key replaces the person's old one, in its place. That is also how you move to a new server, or keep standing after getting a new card.
+- **One person, one vote, any number of nodes.** The person is the certificate subject's `serialNumber`, which on national eID cards is the personal ID number (`PNOHR-` and the OIB): it stays the same when a card is replaced. Certificates without a personal ID number cannot register. A person may register up to 16 keys, one per node, so their validator survives losing a machine or a region. All of them are one voter: the signer window and the rotation quorum count people, so while one of a person's keys is in the window, none of the others may sign, and approvals from several of their keys count once. More nodes buy availability, not say. Never put one key on two nodes: both would sign at once and fork the chain. Registering a key again, with a new card, renews it.
 - **A new key is a candidate, and counts once it signs.** Candidates may sign blocks, but N, the number that the signer window and the quorum are taken from, counts only active keys. Otherwise anyone could register keys that no node runs, raise N until the running keys could no longer fill the signer window, and stop the chain. For the same reason an active key that has signed nothing for `max(16, 4N)` blocks becomes a candidate again, until it signs another block. Only active keys approve rotations. A node holding several keys signs with the one that signed longest ago, so all of them stay counted.
-- **A key goes when its card's certificate expires.** Revocation is not noticed: that would need the OCSP evidence in the chain. The authorities can still remove a key with a rotation, but its holder can register another one.
+- **A key goes when the certificate that registered it expires,** unless it was renewed. Revocation is not noticed: that would need the OCSP evidence in the chain. The authorities can still remove a key with a rotation, but its holder can register another one.
 - **The holder's name is public; the personal ID number is not shown,** but it is in the certificate that comes with the record, like for any message.
-
-Many nodes are fine; many validator keys per person are not. Anyone can run any number of nodes without a key, and they keep a full, verified copy of the chain. Validating nodes in several places for one person would need the window and the quorum to count people rather than keys, which this feature does not do yet.
 
 ### Which eID certificates are accepted
 
@@ -555,7 +553,6 @@ If a key ever does get pushed, treat it as compromised: rotate it (see [Key rota
 - **OCSP is only checked at submission** by the first node. Other nodes verify the stored response offline and do not re-query.
 - **Trust anchors are fixed by the genesis.** Changing them means a new chain.
 - **Authorities are chosen by the authorities, or by the state.** With `authority-changes` the set grows when a majority of the current keys approves. With `eid-validators` anyone with an eID card can join, which moves the trust to whoever issues the cards: the issuer can make as many validators as it issues cards. A group of enough card holders can take a majority too.
-- **One validator key per person.** A person cannot run validators in several places for failover without them counting as several people.
 - **Peer discovery is minimal.** Nodes learn peers from the ones they already have (see [Peers and peer exchange](#peers-and-peer-exchange)), but there is no bootstrap list or DNS discovery: a new node needs at least one peer address to start from.
 - **Whole chain in memory.** Fine for a PoC; see [Future Plans](#future-plans).
 - **No access control, and rate limiting only in nginx.** The pending pool is capped at 5000 payloads, but one card can fill it.

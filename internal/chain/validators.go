@@ -17,10 +17,16 @@ import (
 // Validators registered with an eID card (feature eid-validators).
 //
 // The card does not sign blocks: that needs a PIN for every signature and a
-// person at the reader. It signs once, a record that names a key the node holds,
-// and that key signs the blocks. The person is identified by the certificate's
-// serialNumber, which on a national eID card is the personal ID number and stays
-// the same when the card is replaced, so one person holds at most one key.
+// person at the reader. It signs once per node, a record that names a key the
+// node holds, and that key signs the blocks. The person is identified by the
+// certificate's serialNumber, which on a national eID card is the personal ID
+// number and stays the same when the card is replaced.
+//
+// A person may run several nodes, in several places, so that their validator
+// survives losing one. Each has its own key (one key on two nodes would sign
+// two blocks at once), but all of a person's keys are one voter (State.Voter):
+// the signer window and the quorum count people, not keys, so more keys buy
+// availability and no extra say.
 //
 // A registered key is a candidate: it may sign blocks but does not count toward
 // N, the number the signer window and the quorum are taken from. It is counted
@@ -41,14 +47,21 @@ type Holder struct {
 	NotAfter int64  // the certificate's expiry, unix seconds: the key is dropped then
 }
 
-// Registration is a payload that makes a key a validator. Its eID signature says
-// who; Proof, made with the key itself, shows the registrant holds that key, so
-// nobody can enrol a key of someone else's.
+// MaxKeysPerPerson caps the keys one person may register, so that one card
+// cannot grow the state without bound.
+const MaxKeysPerPerson = 16
+
+// Registration is a payload by which a person adds a validator key, retires one
+// of theirs, or both. Its eID signature says who; Proof, made with the key
+// itself, shows the registrant holds that key, so nobody can enrol a key of
+// someone else's. Registering a key the person already holds renews it with the
+// certificate that signed this record, which matters once a card is replaced.
 type Registration struct {
 	Type    string `json:"type"` // "validator"
 	Chain   Hash   `json:"chain"`
-	Key     string `json:"key"`   // base64 DER SPKI (ECDSA P-256)
-	Proof   string `json:"proof"` // base64 ASN.1 ECDSA by Key over RegistrationHash
+	Key     string `json:"key,omitempty"`    // base64 DER SPKI (ECDSA P-256)
+	Proof   string `json:"proof,omitempty"`  // base64 ASN.1 ECDSA by Key over RegistrationHash
+	Retire  string `json:"retire,omitempty"` // key ID of the person's own key to drop
 	Created string `json:"created,omitempty"`
 }
 
@@ -61,19 +74,23 @@ func RegistrationHash(chain Hash, key string) Hash {
 	return sha256.Sum256(append([]byte(validatorDomain), canonical(v)...))
 }
 
-// NewRegistration returns the payload text that registers s on chain, for a
-// person to sign with their eID card.
-func NewRegistration(chain Hash, s Signer, created time.Time) (string, error) {
-	key, err := EncodePublicKey(&s.Key.PublicKey)
-	if err != nil {
-		return "", err
+// NewRegistration returns the payload text that registers s on chain, and
+// retires the key with ID retire if that is not empty, for a person to sign
+// with their eID card. s may be nil to only retire.
+func NewRegistration(chain Hash, s *Signer, retire string, created time.Time) (string, error) {
+	r := Registration{Type: "validator", Chain: chain, Retire: retire, Created: created.UTC().Format(time.RFC3339)}
+	if s != nil {
+		key, err := EncodePublicKey(&s.Key.PublicKey)
+		if err != nil {
+			return "", err
+		}
+		h := RegistrationHash(chain, key)
+		sig, err := ecdsa.SignASN1(rand.Reader, s.Key, h[:])
+		if err != nil {
+			return "", err
+		}
+		r.Key, r.Proof = key, base64.StdEncoding.EncodeToString(sig)
 	}
-	h := RegistrationHash(chain, key)
-	sig, err := ecdsa.SignASN1(rand.Reader, s.Key, h[:])
-	if err != nil {
-		return "", err
-	}
-	r := Registration{Type: "validator", Chain: chain, Key: key, Proof: base64.StdEncoding.EncodeToString(sig), Created: created.UTC().Format(time.RFC3339)}
 	return string(canonical(r)), nil
 }
 
@@ -103,20 +120,20 @@ func holderOf(c *x509.Certificate) (Holder, error) {
 	return Holder{Identity: sn, Name: SubjectName(c), NotAfter: c.NotAfter.Unix()}, nil
 }
 
-// keyOf returns the key held by a person, if any.
-func (s *State) keyOf(identity string) string {
-	for id, h := range s.Holders {
+// keysOf counts the keys held by a person.
+func (s *State) keysOf(identity string) int {
+	n := 0
+	for _, h := range s.Holders {
 		if h.Identity == identity {
-			return id
+			n++
 		}
 	}
-	return ""
+	return n
 }
 
 // ApplyRegistration returns the state after e, a payload of a block at height
 // signed by cert, if e is a validator registration and the feature is active.
-// Any other payload leaves working as it is. Registering replaces the key the
-// person held before, in its place, so a new card or a new server keeps standing.
+// Any other payload leaves working as it is.
 func (p *Params) ApplyRegistration(working *State, e PayloadEntry, cert *x509.Certificate, height uint64, at time.Time) (*State, error) {
 	if !p.Features.Active(FeatureEIDValidators, height) {
 		return working, nil
@@ -128,6 +145,26 @@ func (p *Params) ApplyRegistration(working *State, e PayloadEntry, cert *x509.Ce
 	if r.Chain != p.GenesisHash {
 		return nil, errors.New("validator registration is for a different chain")
 	}
+	if r.Key == "" && r.Retire == "" {
+		return nil, errors.New("validator registration: neither a key to add nor one to retire")
+	}
+	holder, err := holderOf(cert)
+	if err != nil {
+		return nil, err
+	}
+	if at.Unix() >= holder.NotAfter {
+		return nil, errors.New("validator registration: the certificate has expired")
+	}
+	c := working.clone()
+	if r.Retire != "" {
+		if h, ok := c.Holders[r.Retire]; !ok || h.Identity != holder.Identity {
+			return nil, errors.New("validator registration: the key to retire is not one of yours")
+		}
+		c.drop(r.Retire)
+	}
+	if r.Key == "" {
+		return c, nil
+	}
 	pub, err := DecodePublicKey(r.Key)
 	if err != nil {
 		return nil, fmt.Errorf("validator registration: key: %w", err)
@@ -137,21 +174,14 @@ func (p *Params) ApplyRegistration(working *State, e PayloadEntry, cert *x509.Ce
 	if err != nil || !ecdsa.VerifyASN1(pub, h[:], sig) {
 		return nil, errors.New("validator registration: the proof is not the key's signature")
 	}
-	holder, err := holderOf(cert)
-	if err != nil {
-		return nil, err
-	}
-	if at.Unix() >= holder.NotAfter {
-		return nil, errors.New("validator registration: the certificate has expired")
-	}
 	id, _ := KeyID(pub)
-	if working.Has(id) {
+	switch held, ok := c.Holders[id]; {
+	case ok && held.Identity == holder.Identity: // renewal
+	case c.Has(id) || id == r.Retire:
 		return nil, errors.New("validator registration: the key is already a validator")
-	}
-	c := working.clone()
-	if old := c.keyOf(holder.Identity); old != "" {
-		c.swap(old, id, pub)
-	} else {
+	case c.keysOf(holder.Identity) >= MaxKeysPerPerson:
+		return nil, fmt.Errorf("validator registration: a person may hold at most %d keys; retire one first", MaxKeysPerPerson)
+	default:
 		c.Candidates = append(c.Candidates, id)
 		c.Keys[id] = pub
 		c.LastSigned[id] = height

@@ -17,7 +17,7 @@ Usage:
   eidchain submit   [flags] PAYLOAD SIG     submit a signed record to a node
   eidchain rotate   create|sign|submit      rotate an authority key
   eidchain keygen   [flags]                 create a node key (for a rotation or a validator registration)
-  eidchain validator request [flags]        write the record that makes a key a validator, to sign with an eID card
+  eidchain validator request|retire         write the record that adds or drops a validator key, to sign with an eID card
   eidchain verify   [flags]                 re-verify the local chain from the genesis
   eidchain info     [flags] [SERVER-URL]    show a node's status
   eidchain cert     [flags] CERT-FILE       inspect an eID certificate and check it against the chain's CAs

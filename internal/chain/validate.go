@@ -130,8 +130,9 @@ type Parent struct {
 	// State is the authority set after the parent: the keys that are valid
 	// signers (of the block and of any rotation approvals) for the child.
 	State *State
-	// RecentSigners are the signers of the last State.SignerWindow() blocks up to
-	// and including the parent (newest first). The genesis has no signer.
+	// RecentSigners are the voters (see State.Voter) of the last
+	// State.SignerWindow() blocks up to and including the parent, newest first,
+	// each as of when it signed. The genesis has no signer.
 	RecentSigners []string
 }
 
@@ -140,8 +141,9 @@ func (p *Params) CanSign(id string, parent Parent) bool {
 	if !parent.State.Has(id) {
 		return false
 	}
+	v := parent.State.Voter(id)
 	for _, s := range parent.RecentSigners {
-		if s == id {
+		if s == v {
 			return false
 		}
 	}
@@ -172,7 +174,7 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 		return nil, errors.New("signer is not a currently valid authority")
 	}
 	if !p.CanSign(h.Signer, parent) {
-		return nil, fmt.Errorf("signer signed one of the last %d blocks", parent.State.SignerWindow())
+		return nil, fmt.Errorf("signer, or another key of the same person, signed one of the last %d blocks", parent.State.SignerWindow())
 	}
 	if parent.State.Expired(h.Signer, h.Time) {
 		return nil, errors.New("the signer's eID certificate has expired")

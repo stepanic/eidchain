@@ -55,11 +55,30 @@ func (s *State) clone() *State {
 	return c
 }
 
-// SignerWindow is how many preceding blocks a signer must not appear in (Clique
-// rule): a key may sign at most one block in any floor(N/2)+1 consecutive blocks,
-// so rewriting history takes a majority of the keys. N is the number of keys in
+// Voter is who a key votes for: the person who registered it with an eID card,
+// or else the key itself. A person may run several validating nodes, one key
+// each, but those keys sign and approve as one.
+func (s *State) Voter(id string) string {
+	if h, ok := s.Holders[id]; ok {
+		return "eid:" + h.Identity
+	}
+	return id
+}
+
+// Voters is N: the number of distinct voters among the counted keys.
+func (s *State) Voters() int {
+	seen := make(map[string]bool, len(s.IDs))
+	for _, id := range s.IDs {
+		seen[s.Voter(id)] = true
+	}
+	return len(seen)
+}
+
+// SignerWindow is how many preceding blocks a voter must not appear in (Clique
+// rule): a voter may sign at most one block in any floor(N/2)+1 consecutive
+// blocks, so rewriting history takes a majority of the voters. N is taken from
 // this state, so the window follows additions and removals.
-func (s *State) SignerWindow() int { return len(s.IDs) / 2 }
+func (s *State) SignerWindow() int { return s.Voters() / 2 }
 
 // replace returns a copy of s with oldID's slot given to the new key.
 func (s *State) replace(oldID, newID string, pub *ecdsa.PublicKey) *State {
@@ -120,7 +139,7 @@ func (s *State) drop(id string) {
 // minority rule once keys are added, or block every change once enough are removed.
 func (p *Params) Quorum(st *State, height uint64) int {
 	if p.Features.Active(FeatureAuthorityChanges, height) {
-		return len(st.IDs)/2 + 1
+		return st.Voters()/2 + 1
 	}
 	return p.Rules.RotationQuorum
 }
@@ -194,8 +213,8 @@ func (p *Params) ApplyRotation(signers, working *State, r Rotation, height uint6
 	return working.replace(c.Old, newID, pub), nil
 }
 
-// checkApprovals demands at least quorum distinct, valid signatures from keys
-// that are authorities in signers.
+// checkApprovals demands valid signatures from counted keys of signers, from at
+// least quorum distinct voters.
 func (p *Params) checkApprovals(signers *State, r Rotation, quorum int) error {
 	h := r.Change.Hash()
 	prev := ""
@@ -213,10 +232,20 @@ func (p *Params) checkApprovals(signers *State, r Rotation, quorum int) error {
 			return fmt.Errorf("invalid rotation signature from %s…", short(s.Signer))
 		}
 	}
-	if len(r.Signatures) < quorum {
-		return fmt.Errorf("rotation has %d approvals, %d required", len(r.Signatures), quorum)
+	if n := signers.Approvals(r); n < quorum {
+		return fmt.Errorf("rotation has %d approvals, %d required", n, quorum)
 	}
 	return nil
+}
+
+// Approvals counts the distinct voters among r's signers. It does not check
+// the signatures.
+func (s *State) Approvals(r Rotation) int {
+	seen := map[string]bool{}
+	for _, sig := range r.Signatures {
+		seen[s.Voter(sig.Signer)] = true
+	}
+	return len(seen)
 }
 
 func short(id string) string {

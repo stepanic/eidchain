@@ -22,10 +22,10 @@ const (
 	// current number of keys, because numbers fixed by the genesis stop meaning
 	// "a majority" once that number changes.
 	FeatureAuthorityChanges = "authority-changes"
-	// FeatureEIDValidators lets anyone holding an eID card make a key of theirs a
-	// validator, without the other authorities' approval. A card stands for one
-	// person, so a person can hold one key at a time; registering another replaces
-	// it. See validators.go. It assumes authority-changes is active too.
+	// FeatureEIDValidators lets anyone holding an eID card make keys of theirs
+	// validators, without the other authorities' approval. A card stands for one
+	// person, and all of a person's keys count as one voter. See validators.go. It
+	// assumes authority-changes is active too.
 	FeatureEIDValidators = "eid-validators"
 )
 

@@ -858,7 +858,7 @@ func TestValidatorRegistrationsAtTheNode(t *testing.T) {
 	g := n.store.P.GenesisHash
 	k, _ := chain.GenerateKey()
 	id, _ := chain.KeyID(&k.PublicKey)
-	text, err := chain.NewRegistration(g, chain.Signer{ID: id, Key: k}, time.Now())
+	text, err := chain.NewRegistration(g, &chain.Signer{ID: id, Key: k}, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -210,7 +210,7 @@ func (rp *RotationPool) Ready(p *chain.Params, parent chain.Parent) []chain.Rota
 	st, height := parent.State, parent.Height+1
 	var all []chain.Rotation
 	for _, r := range rp.items {
-		if len(r.Signatures) >= p.Quorum(st, height) {
+		if st.Approvals(*r) >= p.Quorum(st, height) {
 			all = append(all, r.Clone())
 		}
 	}

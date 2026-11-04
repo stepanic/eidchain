@@ -254,8 +254,10 @@ func (s *Store) checkReorgLocked(par *entry) error {
 func (s *Store) parentInfoLocked(e *entry) Parent {
 	p := Parent{Hash: e.hash, Height: e.height, Time: e.time, State: e.state}
 	for cur, n := e, e.state.SignerWindow(); n > 0 && cur.block != nil; n-- {
-		p.RecentSigners = append(p.RecentSigners, cur.block.Header.Signer)
-		cur = s.blocks[cur.parent]
+		// The voter as of the block: the key may have been retired since.
+		par := s.blocks[cur.parent]
+		p.RecentSigners = append(p.RecentSigners, par.state.Voter(cur.block.Header.Signer))
+		cur = par
 	}
 	return p
 }
@@ -390,7 +392,7 @@ func (s *Store) Verify() (uint64, error) {
 		if err != nil {
 			return uint64(h - 1), fmt.Errorf("block %d (%s): %w", h, b.Hash().Short(), err)
 		}
-		signers = append(signers, b.Header.Signer)
+		signers = append(signers, parent.State.Voter(b.Header.Signer))
 		parent = Parent{Hash: b.Hash(), Height: b.Header.Height, Time: b.Header.Time, State: state}
 	}
 	return uint64(len(s.canon) - 1), nil

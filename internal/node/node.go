@@ -356,18 +356,25 @@ func (n *Node) produceLoop(ctx context.Context) {
 	}
 }
 
-// eligibleSigner picks a local key that may sign the next block: the one that
-// signed longest ago, so that a node holding several keys keeps all of them
-// counted (see chain.IdleBlocks).
+// eligibleSigner picks a local key that may sign the next block: a candidate
+// first, so that it starts to count, then the one that signed longest ago, so
+// that a node holding several keys keeps all of them counted (see chain.IdleBlocks).
 func (n *Node) eligibleSigner(parent chain.Parent) (chain.Signer, bool) {
 	now := time.Now().Unix()
+	st := parent.State
+	better := func(a, b chain.Signer) bool {
+		if st.Active(a.ID) != st.Active(b.ID) {
+			return !st.Active(a.ID)
+		}
+		return st.LastSigned[a.ID] < st.LastSigned[b.ID]
+	}
 	var best chain.Signer
 	found := false
 	for _, s := range n.signers {
-		if !n.store.P.CanSign(s.ID, parent) || parent.State.Expired(s.ID, now) {
+		if !n.store.P.CanSign(s.ID, parent) || st.Expired(s.ID, now) {
 			continue
 		}
-		if !found || parent.State.LastSigned[s.ID] < parent.State.LastSigned[best.ID] {
+		if !found || better(s, best) {
 			best, found = s, true
 		}
 	}

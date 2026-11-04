@@ -14,14 +14,17 @@ const setStatus = (text, kind = "") => { $("status").textContent = text; $("stat
 onTrace((line) => { $("trace").textContent += `${new Date().toISOString().slice(11, 23)}  ${line}\n`; });
 
 
-/** Checks the pasted record; returns the key ID it registers, or throws. */
+/** Checks the pasted record; returns what it does, or throws. */
 async function inspect(text) {
   let r;
   try { r = JSON.parse(text); } catch { throw new Error("That is not the JSON record that `eidchain validator request` prints."); }
-  if (r?.type !== "validator" || !r.key || !r.proof) throw new Error("That is not a validator registration.");
+  if (r?.type !== "validator" || !(r.key && r.proof) && !r.retire) throw new Error("That is not a validator registration.");
   if (r.chain !== info.genesisHash) throw new Error(`The record is for another chain (${String(r.chain).slice(0, 12)}…); this node runs ${info.genesisHash.slice(0, 12)}….`);
   if (!info.features?.["eid-validators"]) throw new Error("This chain does not take validator registrations.");
-  return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256", b64ToBytes(r.key))));
+  const parts = [];
+  if (r.key) parts.push(`registers key ${bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256", b64ToBytes(r.key))))}`);
+  if (r.retire) parts.push(`retires key ${r.retire}`);
+  return parts.join(" and ");
 }
 
 async function update() {
@@ -30,8 +33,8 @@ async function update() {
   $("submit").disabled = true;
   if (!text || !info || busy) return;
   try {
-    const id = await inspect(text);
-    $("about").textContent = `Registers key ${id}.`;
+    const what = await inspect(text);
+    $("about").textContent = `This record ${what}.`;
     $("submit").disabled = false;
   } catch (e) {
     $("about").textContent = e.message;
@@ -44,13 +47,13 @@ async function run() {
   $("submit").disabled = true;
   $("trace").textContent = "";
   try {
-    const id = await inspect(payload);
+    await inspect(payload);
     const cms = await signPayload(payload, info.maxPayloadBytes, setStatus);
     setStatus("Submitting to the node…");
     const r = await postJSON("api/v1/payloads", { payload, signature: cms });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
-    setStatus(body.status === "known" ? "This record was already submitted." : `Accepted: key ${id.slice(0, 12)}… becomes a validator in the next block.`, "ok");
+    setStatus(body.status === "known" ? "This record was already submitted." : "Accepted: it takes effect in the next block.", "ok");
   } catch (e) {
     setStatus(errorText(e), "error");
     $("diagnostics").open = true;

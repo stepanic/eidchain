@@ -20,7 +20,7 @@
     <pre>eidchain keygen
 eidchain validator request --server <span id="server">URL</span></pre>
     <p>Paste the record it prints below and sign it with your eID card (PIN2). The card is needed only now: from then on your node signs blocks with its own key. Your key counts toward the authorities once it has signed a block.</p>
-    <p><strong>One person, one validator.</strong> Your personal ID number identifies you, so registering another key replaces the one you have. The key stops being a validator when your card's certificate expires.</p>
+    <p><strong>One person, one vote.</strong> You may run validating nodes in several places, each with its own key, registered one by one; never copy a key to a second node. Your personal ID number identifies you, so all your keys count as one person: they take turns with other people, not with each other. A key stops being a validator when the certificate that registered it expires; registering it again with a new card renews it. To drop a key, use <code>eidchain validator retire KEY-ID</code>.</p>
     <p><strong>This is public and permanent.</strong> Your name is shown next to your key. The certificate in the record also holds your personal ID number (OIB); the explorer hides it, but anyone who downloads the block can read it.</p>
     <label for="record">Registration record</label>
     <textarea id="record" rows="6" spellcheck="false" placeholder='{"type":"validator","chain":"…","key":"…","proof":"…"}'></textarea>
