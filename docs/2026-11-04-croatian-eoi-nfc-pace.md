@@ -48,7 +48,20 @@ EF.CardAccess `31143012060A04007F00070202040204020102020111` decodes to a single
 - version 2
 - parameterId 17. In the TR-03110 standardised domain parameter table this is brainpoolP512r1. The ST names only 256 and 384 bit curves, so confirm when PACE is implemented (a wrong curve fails at the first General Authenticate).
 
-Consequences: a Brainpool curve rules out CryptoKit for PACE on iOS, so PACE needs OpenSSL or a small pure-Swift EC implementation. The CAN is the PACE password. We have not yet checked whether the eSign application requires PACE for reading certificates or signing, or whether SELECT works only because it is unprotected.
+Second probe, inside the eSign application (SELECT by AID, then only SELECT/READ BINARY):
+
+| Probe | Result | Meaning |
+|---|---|---|
+| SELECT by FID of 27 usual EN 419212 / PKCS#15 / CardOS file ids (C000, C500, 5031, 4401, ...) | all `6A82` | AKD uses its own file ids, so we address files by short EF id instead |
+| READ BINARY SFI 1, SFI 2 | `6982` | files exist and are **protected**: security status not satisfied, PACE (and maybe PIN) needed |
+| READ BINARY SFI 3 | `6282`, 12 bytes, tag `5A` | open file with the card serial number (ASCII prefix `CRO`) |
+| READ BINARY SFI 28 (`0x1C`, EF.CardAccess of the application) | `6282`, 22 bytes | PACEInfo: id-PACE-ECDH-GM-AES-CBC-CMAC-256, version 2, **parameterId 15 = NIST P-384** |
+
+So the eSign application has its own PACE configuration, on NIST P-384, which matches the ST ("256 and 384 bits"). The parameterId 17 under the MF is likely the MRTD applet's.
+
+Consequences: CryptoKit has P-384 ECDH, but PACE generic mapping needs the full shared point and point addition (G' = s·G + H), which CryptoKit does not expose. So PACE still needs OpenSSL or a small EC implementation, though a NIST curve keeps it simple. The protected SFIs 1 and 2 show that data in the eSign application sits behind PACE. Earlier note on the MF parameter follows.
+
+Earlier conclusion, MF level: a Brainpool curve rules out CryptoKit for PACE on iOS, so PACE needs OpenSSL or a small pure-Swift EC implementation. The CAN is the PACE password. We have not yet checked whether the eSign application requires PACE for reading certificates or signing, or whether SELECT works only because it is unprotected.
 
 ## Verdict
 
