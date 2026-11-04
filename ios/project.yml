@@ -1,0 +1,25 @@
+name: EOINFC
+options:
+  bundleIdPrefix: hr.italk.eidchain
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    DEVELOPMENT_TEAM: 6SCK58757K
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+targets:
+  EOINFC:
+    type: application
+    platform: iOS
+    sources: [EOINFC]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: hr.italk.eidchain.eoinfc
+        PRODUCT_NAME: eOI NFC
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: EOINFC/EOINFC.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: EOINFC/Info.plist
