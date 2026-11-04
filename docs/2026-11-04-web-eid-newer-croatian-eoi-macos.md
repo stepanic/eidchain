@@ -43,7 +43,4 @@ The defaults and the reasons are in `scripts/release-macos-italk.sh` in stepanic
 ## Related documents
 
 - [eidchain.domovina.ai and eID validators](2026-11-04-eidchain-domovina-and-eid-validators.md)
-
-## Related documents
-
-- [Croatian eOI over NFC](2026-11-04-croatian-eoi-nfc-pace.md): whether a phone could replace the USB reader, as Estonia's Web eID for Mobile does.
+- [Croatian eOI over NFC](2026-11-04-croatian-eoi-nfc-pace.md): a phone can reach the signing application over NFC with PACE-CAN (tested on an iPhone).
