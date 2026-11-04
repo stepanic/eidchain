@@ -1,6 +1,6 @@
 # Croatian eOI over NFC: can a phone replace the USB reader?
 
-Status on 2026-11-04. Web research plus the security target. Nobody has tested a card over NFC yet.
+Status on 2026-11-04. Web research, the security target, and a first NFC probe of a real card from an iPhone (`ios/`).
 
 ## Why this matters
 
@@ -28,9 +28,31 @@ If the eOI's eID applet answered over NFC with PACE, the same approach would wor
 
 For comparison, the Slovenian eOI prints a CAN on the front and works with OpenSC over NFC ([OpenSC wiki](https://www.github.com/OpenSC/OpenSC/wiki/Slovenian-EID)). So the model exists in the region.
 
+## Measured over NFC (iPhone 15 Pro, iOS 26.6, 2026-11-04)
+
+Probe app `ios/EOINFC` (Core NFC), no PACE, no PIN. Two runs gave identical results.
+
+| Command | Result | Meaning |
+|---|---|---|
+| Card discovered via MRTD AID `A0000002471001` | ok | Core NFC needs one declared AID to answer before it reports the card |
+| Historical bytes | `AKDeID2.0-SSCD` | same applet banner as over contact |
+| SELECT MF, then EF.CardAccess `011C` | `9000`, 22 bytes | PACE is offered (below) |
+| EF.DIR `2F00`, `2F01` | `6A82` | no application directory, so AIDs have to be known |
+| SELECT `A000000167455349474E` ("ESIGN", EN 419212 eSign application) | **`9000`** | the signing application answers over the contactless interface |
+| SELECT `E80704007F00070302` (German-style eID) | `6A82` | not present |
+| SELECT `E828BD080FA000000167455349474E`, PKCS#15 `A000000063504B43532D3135` | `6A86` | not present in this form |
+
+EF.CardAccess `31143012060A04007F00070202040204020102020111` decodes to a single PACEInfo:
+
+- protocol `0.4.0.127.0.7.2.2.4.2.4` = **id-PACE-ECDH-GM-AES-CBC-CMAC-256**
+- version 2
+- parameterId 17. In the TR-03110 standardised domain parameter table this is brainpoolP512r1. The ST names only 256 and 384 bit curves, so confirm when PACE is implemented (a wrong curve fails at the first General Authenticate).
+
+Consequences: a Brainpool curve rules out CryptoKit for PACE on iOS, so PACE needs OpenSSL or a small pure-Swift EC implementation. The CAN is the PACE password. We have not yet checked whether the eSign application requires PACE for reading certificates or signing, or whether SELECT works only because it is unprotected.
+
 ## Verdict
 
-**Probably yes, still to be proved on a card.** The earlier verdict ("probably not") rested on the brochure's word "contact". The CC security target says otherwise: the signing applet itself is certified for the contactless interface and for PACE-CAN with secure messaging, which is exactly the Estonian model. The card also carries a printed CAN. What remains open is whether Croatia's personalisation profile enables the applet over NFC, and with which PACE parameters. Only a card test answers that.
+**Very likely yes. The signing application answers over NFC.** The earlier verdict ("probably not") rested on the brochure's word "contact". The CC security target says otherwise: the signing applet itself is certified for the contactless interface and for PACE-CAN with secure messaging, which is exactly the Estonian model. The card also carries a printed CAN. What remains open is whether Croatia's personalisation profile enables the applet over NFC, and with which PACE parameters. Only a card test answers that.
 
 The official mobile identity (Certilia) still avoids the card, so there is no Croatian app to copy. We would write the card layer ourselves on top of EN 419212.
 
