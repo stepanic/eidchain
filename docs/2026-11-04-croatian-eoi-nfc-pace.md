@@ -63,9 +63,26 @@ Consequences: CryptoKit has P-384 ECDH, but PACE generic mapping needs the full 
 
 Earlier conclusion, MF level: a Brainpool curve rules out CryptoKit for PACE on iOS, so PACE needs OpenSSL or a small pure-Swift EC implementation. The CAN is the PACE password. We have not yet checked whether the eSign application requires PACE for reading certificates or signing, or whether SELECT works only because it is unprotected.
 
+### PACE-CAN works (2026-11-04, build 202611042109)
+
+`ios/PACEKit` (pure Swift: P-384 arithmetic on BigInt, CommonCrypto AES, CMAC) ran PACE against the real card twice:
+
+```
+SELECT eSign: 9000
+MSE:Set AT ok            (80 = id-PACE-ECDH-GM-AES-CBC-CMAC-256, 83 = 02 CAN, no 84)
+nonce 16 B
+mapped generator ok
+key agreement ok
+PACE established         (card's authentication token verified)
+PACE 1.5 s               (most of it NFC round trips)
+SFI 1: 6982   SFI 2: 6982   SFI 3: 6282, 12 B, read and MAC-verified through SM
+```
+
+So the eSign application accepts PACE-CAN over NFC, and secure messaging (AES-256 CBC + CMAC, SSC from zero) is correct. SFI 1 and 2 stay closed after PACE, so they need more than the CAN: most likely the PIN, possibly terminal authentication. The certificates are not at SFI 1-6. Their file ids are still unknown, because the application uses neither EF.DIR nor the usual EN 419212 / PKCS#15 FIDs.
+
 ## Verdict
 
-**Very likely yes. The signing application answers over NFC.** The earlier verdict ("probably not") rested on the brochure's word "contact". The CC security target says otherwise: the signing applet itself is certified for the contactless interface and for PACE-CAN with secure messaging, which is exactly the Estonian model. The card also carries a printed CAN. What remains open is whether Croatia's personalisation profile enables the applet over NFC, and with which PACE parameters. Only a card test answers that.
+**Yes for the transport: the signing application answers over NFC and PACE-CAN works.** Signing itself still needs the certificate and key references and a PIN VERIFY. The earlier verdict ("probably not") rested on the brochure's word "contact". The CC security target says otherwise: the signing applet itself is certified for the contactless interface and for PACE-CAN with secure messaging, which is exactly the Estonian model. The card also carries a printed CAN. What remains open is whether Croatia's personalisation profile enables the applet over NFC, and with which PACE parameters. Only a card test answers that.
 
 The official mobile identity (Certilia) still avoids the card, so there is no Croatian app to copy. We would write the card layer ourselves on top of EN 419212.
 
