@@ -1,8 +1,8 @@
 # eidchain: čvorovi i ključevi
 
-Generirano **04.11.2026. 16:54 (CET)** skriptom `scripts/chain-map.py`. Ne uređivati ručno: svako pokretanje prepisuje dokument stanjem lanca u tom trenutku.
+Generirano **04.11.2026. 17:23 (CET)** skriptom `scripts/chain-map.py`. Ne uređivati ručno: svako pokretanje prepisuje dokument stanjem lanca u tom trenutku.
 
-- Lanac `70659df25175`, visina **4**, head `9c05177d5b80`
+- Lanac `70659df25175`, visina **5**, head `4c42c881a23e`
 - Javnih čvorova: **2** od 2 poznatih
 - Glasača (N): **4**, signer window 2, kvorum za rotaciju 3
 - Ključeva koji smiju potpisivati: 5 (aktivnih 4, kandidata 1)
@@ -14,8 +14,8 @@ Strelica A → B: A ima B na popisu peerova, pa gura blokove prema B i povlači 
 
 ```mermaid
 flowchart LR
-  https___eidchain_i9_domovina_ai_chain["eidchain-i9.domovina.ai<br/>i9.local<br/>visina 4, head 9c05177d"]
-  https___eidchain_mini_domovina_ai_chain["eidchain-mini.domovina.ai<br/>Mac Mini (ffhr.local)<br/>visina 4, head 9c05177d"]
+  https___eidchain_i9_domovina_ai_chain["eidchain-i9.domovina.ai<br/>i9.local<br/>visina 5, head 4c42c881"]
+  https___eidchain_mini_domovina_ai_chain["eidchain-mini.domovina.ai<br/>Mac Mini (ffhr.local)<br/>visina 5, head 4c42c881"]
   https___eidchain_i9_domovina_ai_chain --> https___eidchain_mini_domovina_ai_chain
   https___eidchain_mini_domovina_ai_chain --> https___eidchain_i9_domovina_ai_chain
 ```
@@ -51,7 +51,7 @@ flowchart LR
 | ključ | čiji | stanje | čvor | zadnji potpisani blok |
 |---|---|---|---|---|
 | `ec820b5b` | authority-1 | aktivan | eidchain-i9.domovina.ai | 3 |
-| `20a17442` | authority-2 | aktivan | eidchain-i9.domovina.ai | 2 |
+| `20a17442` | authority-2 | aktivan | eidchain-i9.domovina.ai | 5 |
 | `42a13b2a` | authority-3 | aktivan | eidchain-i9.domovina.ai | — |
 | `69007f4b` | MATIJA STEPANIĆ | aktivan | eidchain-i9.domovina.ai | 4 |
 | `0b26a5a7` | MATIJA STEPANIĆ | kandidat | eidchain-mini.domovina.ai | — |
@@ -60,13 +60,14 @@ flowchart LR
 
 | čvor | stanje | visina | čeka | potpisuje | radi od |
 |---|---|---|---|---|---|
-| eidchain-i9.domovina.ai | može rezati blok | 4 | 0 | 4 | 04.11. 16:52 |
-| eidchain-mini.domovina.ai | čeka svoj red | 4 | 0 | 1 | 04.11. 16:54 |
+| eidchain-i9.domovina.ai | može rezati blok | 5 | 0 | 4 | 04.11. 16:52 |
+| eidchain-mini.domovina.ai | čeka svoj red | 5 | 0 | 1 | 04.11. 16:54 |
 
 ## Zadnji blokovi
 
 | visina | vrijeme | potpisao | poruka |
 |---|---|---|---|
+| 5 | 04.11. 17:00 | `20a17442` authority-2 | 1 |
 | 4 | 04.11. 16:40 | `69007f4b` MATIJA STEPANIĆ | 1 |
 | 3 | 04.11. 16:20 | `ec820b5b` authority-1 | 1 |
 | 2 | 04.11. 15:40 | `20a17442` authority-2 | 1 |
