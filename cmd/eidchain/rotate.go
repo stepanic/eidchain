@@ -69,7 +69,7 @@ func rotateCreate(args []string) error {
 	}
 	change.Chain, change.Seq = info.GenesisHash, info.RotationSeq
 	if *old != "" {
-		for _, id := range info.Authorities {
+		for _, id := range append(info.Authorities, info.Candidates...) {
 			if strings.HasPrefix(id, *old) {
 				if change.Old != "" {
 					return fmt.Errorf("--old %q is ambiguous", *old)

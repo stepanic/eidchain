@@ -143,7 +143,7 @@ func (n *Node) info() remote.Info {
 	return remote.Info{
 		Version: chain.Version, GenesisHash: n.store.P.GenesisHash, Message: n.store.P.Genesis.Message,
 		Height: h, Head: head, HeadTime: headTime,
-		Authorities: parent.State.IDs, RotationSeq: parent.State.Seq, RotationQuorum: n.quorum(parent),
+		Authorities: parent.State.IDs, Candidates: parent.State.Candidates, RotationSeq: parent.State.Seq, RotationQuorum: n.quorum(parent),
 		Pending: n.pool.Len(), PendingRotations: len(n.rots.List()),
 		MaxPayloadBytes:      n.store.P.Rules.MaxPayloadBytes,
 		BlockIntervalSeconds: int(n.opt.BlockInterval / time.Second),
@@ -254,7 +254,25 @@ func (n *Node) handlePostPayload(w http.ResponseWriter, r *http.Request) {
 func (n *Node) handleAuthorities(w http.ResponseWriter, r *http.Request) {
 	parent := n.store.HeadParent()
 	st := parent.State
-	writeJSON(w, 200, map[string]any{"authorities": st.IDs, "rotationSeq": st.Seq, "rotationQuorum": n.quorum(parent)})
+	writeJSON(w, 200, map[string]any{"authorities": st.IDs, "candidates": nonNil(st.Candidates), "validators": holderNames(st),
+		"rotationSeq": st.Seq, "rotationQuorum": n.quorum(parent)})
+}
+
+// holderNames maps each key registered with an eID card to its holder's name.
+// The personal ID number that identifies the holder stays out: it is not public.
+func holderNames(st *chain.State) map[string]string {
+	out := map[string]string{}
+	for id, h := range st.Holders {
+		out[id] = h.Name
+	}
+	return out
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{} // JSON [] rather than null
+	}
+	return s
 }
 
 // quorum is how many approvals a rotation needs to go into the next block.

@@ -190,7 +190,7 @@ func (rp *RotationPool) Add(p *chain.Params, parent chain.Parent, r chain.Rotati
 	before := len(cur.Signatures)
 	for _, s := range r.Signatures {
 		key, ok := st.Keys[s.Signer]
-		if !ok {
+		if !ok || !st.Active(s.Signer) {
 			return status, len(cur.Signatures), false, errors.New("approval from a key that is not a currently valid authority")
 		}
 		if !chain.VerifyKeyChangeSig(key, c, s) {

@@ -342,16 +342,28 @@ func (n *Node) handleExplorerAuthorities(w http.ResponseWriter, r *http.Request)
 		pending = []chain.Rotation{} // JSON [] rather than null
 	}
 	writeJSON(w, 200, map[string]any{
-		"genesis":  n.store.P.Genesis.Authorities,
-		"current":  st.IDs,
-		"seq":      st.Seq,
-		"quorum":   n.quorum(parent),
-		"window":   st.SignerWindow(),
-		"history":  hist,
-		"pending":  pending,
-		"canSign":  n.localKeyIDs(),
-		"rotation": n.store.P.Rules,
+		"genesis":    n.store.P.Genesis.Authorities,
+		"current":    st.IDs,
+		"candidates": nonNil(st.Candidates),
+		"validators": holderNames(st),
+		"idleBlocks": n.idleBlocks(parent),
+		"seq":        st.Seq,
+		"quorum":     n.quorum(parent),
+		"window":     st.SignerWindow(),
+		"history":    hist,
+		"pending":    pending,
+		"canSign":    n.localKeyIDs(),
+		"rotation":   n.store.P.Rules,
 	})
+}
+
+// idleBlocks is how long a counted key may go without signing, or 0 if keys are
+// counted for good (before the eid-validators feature).
+func (n *Node) idleBlocks(parent chain.Parent) uint64 {
+	if !n.store.P.Features.Active(chain.FeatureEIDValidators, parent.Height+1) {
+		return 0
+	}
+	return chain.IdleBlocks(parent.State)
 }
 
 // newKeyID is the ID of the key a change replaces with or adds, or "" if none.
@@ -403,11 +415,9 @@ func (n *Node) handleExplorerSearch(w http.ResponseWriter, r *http.Request) {
 			found("tx", q)
 			return
 		}
-		for _, id := range n.store.HeadState().IDs {
-			if id == q {
-				found("authority", q)
-				return
-			}
+		if n.store.HeadState().Has(q) {
+			found("authority", q)
+			return
 		}
 		for _, e := range n.store.RotationHistory() {
 			if e.Rotation.Change.Old == q {
@@ -454,7 +464,7 @@ func (n *Node) searchShort(q string) []searchHit {
 	for _, it := range n.pool.Snapshot() {
 		try("tx", it.Entry.ID().String())
 	}
-	for _, id := range n.store.HeadState().IDs {
+	for id := range n.store.HeadState().Keys {
 		try("authority", id)
 	}
 	for _, e := range n.store.RotationHistory() {

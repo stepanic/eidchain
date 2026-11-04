@@ -25,6 +25,7 @@ type Info struct {
 	Head                 chain.Hash     `json:"head"`
 	HeadTime             int64          `json:"headTime"`
 	Authorities          []string       `json:"authorities"`
+	Candidates           []string       `json:"candidates,omitempty"` // registered validators not counted yet (eid-validators)
 	RotationSeq          uint64         `json:"rotationSeq"`
 	RotationQuorum       int            `json:"rotationQuorum"`
 	Pending              int            `json:"pending"`

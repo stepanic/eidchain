@@ -22,12 +22,18 @@ const (
 	// current number of keys, because numbers fixed by the genesis stop meaning
 	// "a majority" once that number changes.
 	FeatureAuthorityChanges = "authority-changes"
+	// FeatureEIDValidators lets anyone holding an eID card make a key of theirs a
+	// validator, without the other authorities' approval. A card stands for one
+	// person, so a person can hold one key at a time; registering another replaces
+	// it. See validators.go. It assumes authority-changes is active too.
+	FeatureEIDValidators = "eid-validators"
 )
 
 // featureVersions gives the block version each known feature introduces.
 var featureVersions = map[string]int{
 	FeatureBlockTimestamps:  2,
 	FeatureAuthorityChanges: 3,
+	FeatureEIDValidators:    4,
 }
 
 // Schedule says from which height each feature applies. It comes from the "features"

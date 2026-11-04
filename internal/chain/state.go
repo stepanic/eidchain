@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -11,18 +12,45 @@ import (
 // it, so every block is validated against the state of its parent: a key is
 // "valid at the time" if it is in the parent's state.
 type State struct {
-	IDs  []string // key IDs, in slot order (a replacement keeps the old key's slot)
-	Keys map[string]*ecdsa.PublicKey
-	Seq  uint64 // rotations applied so far on this branch
+	// IDs are the active authorities, in slot order (a replacement keeps the old
+	// key's slot). Only they count: for the signer window, the quorum, and as
+	// approvers of rotations.
+	IDs  []string
+	Keys map[string]*ecdsa.PublicKey // every key that may sign a block: IDs and Candidates
+	Seq  uint64                      // rotations applied so far on this branch
+
+	// The rest is used from the eid-validators feature on.
+
+	// Candidates may sign blocks but are not counted until they do (see
+	// FeatureEIDValidators): a key nobody runs must not raise N.
+	Candidates []string
+	Holders    map[string]Holder // keys registered with an eID card, by key ID
+	LastSigned map[string]uint64 // height of each key's last block, or of when it was first counted
 }
 
-// Has reports whether id is an authority in this state.
+// Has reports whether id may sign a block in this state.
 func (s *State) Has(id string) bool { _, ok := s.Keys[id]; return ok }
 
+// Active reports whether id is a counted authority: one that may approve rotations.
+func (s *State) Active(id string) bool { return slices.Contains(s.IDs, id) }
+
+// Expired reports whether id was registered with an eID certificate that has
+// expired by time t (unix seconds).
+func (s *State) Expired(id string, t int64) bool {
+	h, ok := s.Holders[id]
+	return ok && t >= h.NotAfter
+}
+
 func (s *State) clone() *State {
-	c := &State{IDs: append([]string(nil), s.IDs...), Keys: make(map[string]*ecdsa.PublicKey, len(s.Keys)), Seq: s.Seq}
-	for k, v := range s.Keys {
-		c.Keys[k] = v
+	c := &State{
+		IDs: slices.Clone(s.IDs), Keys: maps.Clone(s.Keys), Seq: s.Seq,
+		Candidates: slices.Clone(s.Candidates), Holders: maps.Clone(s.Holders), LastSigned: maps.Clone(s.LastSigned),
+	}
+	if c.Holders == nil {
+		c.Holders = map[string]Holder{}
+	}
+	if c.LastSigned == nil {
+		c.LastSigned = map[string]uint64{}
 	}
 	return c
 }
@@ -36,15 +64,28 @@ func (s *State) SignerWindow() int { return len(s.IDs) / 2 }
 // replace returns a copy of s with oldID's slot given to the new key.
 func (s *State) replace(oldID, newID string, pub *ecdsa.PublicKey) *State {
 	c := s.clone()
-	for i, id := range c.IDs {
-		if id == oldID {
-			c.IDs[i] = newID
-		}
-	}
-	delete(c.Keys, oldID)
-	c.Keys[newID] = pub
+	c.swap(oldID, newID, pub)
 	c.Seq++
 	return c
+}
+
+// swap puts the new key in oldID's place, active or candidate, in s itself. The
+// holder of the old key, if any, does not carry over.
+func (s *State) swap(oldID, newID string, pub *ecdsa.PublicKey) {
+	for _, list := range [][]string{s.IDs, s.Candidates} {
+		for i, id := range list {
+			if id == oldID {
+				list[i] = newID
+			}
+		}
+	}
+	delete(s.Keys, oldID)
+	s.Keys[newID] = pub
+	if n, ok := s.LastSigned[oldID]; ok {
+		s.LastSigned[newID] = n
+	}
+	delete(s.LastSigned, oldID)
+	delete(s.Holders, oldID)
 }
 
 // add returns a copy of s with the new key in a new, last slot.
@@ -59,10 +100,18 @@ func (s *State) add(newID string, pub *ecdsa.PublicKey) *State {
 // remove returns a copy of s without oldID.
 func (s *State) remove(oldID string) *State {
 	c := s.clone()
-	c.IDs = slices.DeleteFunc(c.IDs, func(id string) bool { return id == oldID })
-	delete(c.Keys, oldID)
+	c.drop(oldID)
 	c.Seq++
 	return c
+}
+
+// drop removes id from s itself.
+func (s *State) drop(id string) {
+	s.IDs = slices.DeleteFunc(s.IDs, func(x string) bool { return x == id })
+	s.Candidates = slices.DeleteFunc(s.Candidates, func(x string) bool { return x == id })
+	delete(s.Keys, id)
+	delete(s.Holders, id)
+	delete(s.LastSigned, id)
 }
 
 // Quorum is how many approvals a rotation in the block at height needs from the
@@ -107,7 +156,7 @@ func (p *Params) CheckChange(working *State, c KeyChange, height uint64) (*ecdsa
 		}
 		// Without a key nobody can sign a block or approve another rotation,
 		// so the chain would stop for good.
-		if len(working.IDs) == 1 {
+		if working.Active(c.Old) && len(working.IDs) == 1 {
 			return nil, "", errors.New("the last authority cannot be removed")
 		}
 		return nil, "", nil
@@ -156,7 +205,7 @@ func (p *Params) checkApprovals(signers *State, r Rotation, quorum int) error {
 		}
 		prev = s.Signer
 		pub, ok := signers.Keys[s.Signer]
-		if !ok {
+		if !ok || !signers.Active(s.Signer) {
 			return fmt.Errorf("rotation signed by %s…, which is not a currently valid authority", short(s.Signer))
 		}
 		sig, err := decodeB64(s.Signature)

@@ -852,3 +852,45 @@ func TestRotationPoolAddsKeys(t *testing.T) {
 		t.Fatal("pruned a proposal that still applies")
 	}
 }
+
+func TestValidatorRegistrationsAtTheNode(t *testing.T) {
+	n, _, pki := newSoloNode(t)
+	g := n.store.P.GenesisHash
+	k, _ := chain.GenerateKey()
+	id, _ := chain.KeyID(&k.PublicKey)
+	text, err := chain.NewRegistration(g, chain.Signer{ID: id, Key: k}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed := func(name, oib string) chain.PayloadEntry {
+		l := pki.LeafSubject(t, pkix.Name{CommonName: name, SerialNumber: "PNOHR-" + oib})
+		return chain.PayloadEntry{Payload: text, Signature: base64.StdEncoding.EncodeToString(testpki.CadesSign(t, l, []byte(text)))}
+	}
+	pero, ana := signed("PERO", "11111111111"), signed("ANA", "22222222222")
+
+	// Before the feature it would register nobody, so it is refused.
+	if _, err := n.SubmitPayload(context.Background(), pero, "test"); err == nil || !strings.Contains(err.Error(), "does not take validator registrations") {
+		t.Fatalf("accepted before the feature: %v", err)
+	}
+	n.store.P.Features = chain.Schedule{chain.FeatureAuthorityChanges: chain.At(1), chain.FeatureEIDValidators: chain.At(1)}
+	// Two people register the same key: both are fine on their own, but only the
+	// first can go into the block.
+	for _, e := range []chain.PayloadEntry{pero, ana} {
+		if _, err := n.SubmitPayload(context.Background(), e, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n.produce()
+	st := n.store.HeadState()
+	if !st.Has(id) || st.Active(id) || st.Holders[id].Name != "PERO" || n.pool.Len() != 0 {
+		t.Fatalf("after the block: candidates %v, holders %v, pending %d", st.Candidates, st.Holders, n.pool.Len())
+	}
+	// The API names the holder but never the personal ID number.
+	body := get(n.Handler(), "/api/v1/authorities").Body.String()
+	if !strings.Contains(body, `"`+id+`":"PERO"`) || strings.Contains(body, "11111111111") {
+		t.Fatalf("authorities: %s", body)
+	}
+	if _, err := n.SubmitPayload(context.Background(), ana, "test"); err == nil {
+		t.Fatal("a key already registered was accepted again")
+	}
+}

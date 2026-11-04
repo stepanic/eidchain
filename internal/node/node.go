@@ -239,6 +239,10 @@ func (n *Node) SubmitPayload(ctx context.Context, e chain.PayloadEntry, from str
 		log.Printf("payload %s REJECTED from %s: %v", id.Short(), from, err)
 		return remote.SubmitResult{}, ErrBadPayload{err}
 	}
+	if err := n.checkRegistration(e, info.Cert); err != nil {
+		log.Printf("payload %s REJECTED from %s: %v", id.Short(), from, err)
+		return remote.SubmitResult{}, ErrBadPayload{err}
+	}
 	if e.OCSP != "" || n.opt.OCSP == "required" {
 		issuer := n.store.P.Trust.Issuer(info.Cert)
 		if issuer == nil {
@@ -311,6 +315,23 @@ func (n *Node) checkChainField(payload string) error {
 	return nil
 }
 
+// checkRegistration refuses a validator registration that would not apply to the
+// next block, so a block that carries it is not made invalid by it. Before the
+// feature's height it would go on chain as a plain record and register nobody,
+// which is not what the person signed it for.
+func (n *Node) checkRegistration(e chain.PayloadEntry, cert *x509.Certificate) error {
+	_, ok, err := chain.ParseRegistration(e.Payload)
+	if !ok || err != nil {
+		return err
+	}
+	p, parent := n.store.P, n.store.HeadParent()
+	if !p.Features.Active(chain.FeatureEIDValidators, parent.Height+1) {
+		return fmt.Errorf("this chain does not take validator registrations yet (feature %s)", chain.FeatureEIDValidators)
+	}
+	_, err = p.ApplyRegistration(parent.State, e, cert, parent.Height+1, time.Now())
+	return err
+}
+
 // ---- block production ----
 
 func nextBoundary(now time.Time, interval time.Duration) time.Time {
@@ -335,14 +356,22 @@ func (n *Node) produceLoop(ctx context.Context) {
 	}
 }
 
-// eligibleSigner picks a local key that may sign the next block.
+// eligibleSigner picks a local key that may sign the next block: the one that
+// signed longest ago, so that a node holding several keys keeps all of them
+// counted (see chain.IdleBlocks).
 func (n *Node) eligibleSigner(parent chain.Parent) (chain.Signer, bool) {
+	now := time.Now().Unix()
+	var best chain.Signer
+	found := false
 	for _, s := range n.signers {
-		if n.store.P.CanSign(s.ID, parent) {
-			return s, true
+		if !n.store.P.CanSign(s.ID, parent) || parent.State.Expired(s.ID, now) {
+			continue
+		}
+		if !found || parent.State.LastSigned[s.ID] < parent.State.LastSigned[best.ID] {
+			best, found = s, true
 		}
 	}
-	return chain.Signer{}, false
+	return best, found
 }
 
 // requestTimestamp gets one token, trying the authorities in order. Without one no
@@ -392,12 +421,18 @@ func (n *Node) produce() {
 	if now < parent.Time {
 		now = parent.Time
 	}
+	height := parent.Height + 1
 	var entries []chain.PayloadEntry
 	drop := map[chain.Hash]bool{}
 	size := blockOverhead
+	// working is the authority state as the block builds up, so that validator
+	// registrations are checked in the order they go in (two people cannot
+	// register one key, and a rotation may already have taken it).
+	working := parent.State
 	for _, r := range rots {
 		raw, _ := json.Marshal(r)
 		size += len(raw) + 1
+		working, _ = n.store.P.ApplyRotation(parent.State, working, r, height) // Ready checked it
 	}
 	for _, it := range items {
 		id := it.Entry.ID()
@@ -405,7 +440,14 @@ func (n *Node) produce() {
 			drop[id] = true
 			continue
 		}
-		if _, err := n.store.P.VerifyPayload(it.Entry, time.Unix(now, 0)); err != nil {
+		info, err := n.store.P.VerifyPayload(it.Entry, time.Unix(now, 0))
+		if err != nil {
+			log.Printf("dropping pending payload %s: %v", id.Short(), err)
+			drop[id] = true
+			continue
+		}
+		after, err := n.store.P.ApplyRegistration(working, it.Entry, info.Cert, height, time.Unix(now, 0))
+		if err != nil {
 			log.Printf("dropping pending payload %s: %v", id.Short(), err)
 			drop[id] = true
 			continue
@@ -416,6 +458,7 @@ func (n *Node) produce() {
 		}
 		size += len(raw) + 1
 		entries = append(entries, it.Entry)
+		working = after
 	}
 	if len(drop) > 0 {
 		n.pool.Remove(drop)
@@ -423,7 +466,6 @@ func (n *Node) produce() {
 	if len(entries) == 0 && len(rots) == 0 {
 		return
 	}
-	height := parent.Height + 1
 	b := &chain.Block{
 		Header:    chain.Header{Version: n.store.P.Features.VersionAt(height), Height: height, Prev: parent.Hash, Time: now},
 		Payloads:  entries,

@@ -16,6 +16,8 @@ Usage:
   eidchain genesis  [flags]                 create a new chain (genesis block and authority keys)
   eidchain submit   [flags] PAYLOAD SIG     submit a signed record to a node
   eidchain rotate   create|sign|submit      rotate an authority key
+  eidchain keygen   [flags]                 create a node key (for a rotation or a validator registration)
+  eidchain validator request [flags]        write the record that makes a key a validator, to sign with an eID card
   eidchain verify   [flags]                 re-verify the local chain from the genesis
   eidchain info     [flags] [SERVER-URL]    show a node's status
   eidchain cert     [flags] CERT-FILE       inspect an eID certificate and check it against the chain's CAs
@@ -42,6 +44,10 @@ func main() {
 		err = cmdSubmit(args)
 	case "rotate":
 		err = cmdRotate(args)
+	case "keygen":
+		err = cmdKeygen(args)
+	case "validator":
+		err = cmdValidator(args)
 	case "verify":
 		err = cmdVerify(args)
 	case "info":

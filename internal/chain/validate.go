@@ -174,6 +174,9 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 	if !p.CanSign(h.Signer, parent) {
 		return nil, fmt.Errorf("signer signed one of the last %d blocks", parent.State.SignerWindow())
 	}
+	if parent.State.Expired(h.Signer, h.Time) {
+		return nil, errors.New("the signer's eID certificate has expired")
+	}
 	if h.PayloadCount != len(b.Payloads) || h.RotationCount != len(b.Rotations) {
 		return nil, errors.New("payloadCount or rotationCount does not match the block body")
 	}
@@ -209,6 +212,7 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 	}
 	at := time.Unix(h.Time, 0)
 	seen := map[Hash]bool{}
+	certs := make([]*x509.Certificate, len(b.Payloads))
 	for i, e := range b.Payloads {
 		info, err := p.VerifyPayload(e, at)
 		if err != nil {
@@ -218,6 +222,7 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 			return nil, fmt.Errorf("payload %d duplicates an earlier payload in the block", i)
 		}
 		seen[info.ID] = true
+		certs[i] = info.Cert
 	}
 	// Key rotations: approved by keys valid at the parent, applied in order.
 	next := parent.State
@@ -226,5 +231,13 @@ func (p *Params) ValidateBlock(b *Block, parent Parent, now time.Time) (*State, 
 			return nil, fmt.Errorf("rotation %d: %w", i, err)
 		}
 	}
-	return next, nil
+	if !p.Features.Active(FeatureEIDValidators, h.Height) {
+		return next, nil
+	}
+	for i, e := range b.Payloads {
+		if next, err = p.ApplyRegistration(next, e, certs[i], h.Height, at); err != nil {
+			return nil, fmt.Errorf("payload %d: %w", i, err)
+		}
+	}
+	return p.settle(next, h.Signer, h.Height, h.Time), nil
 }

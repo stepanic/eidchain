@@ -83,10 +83,17 @@ func (p *PKI) Leaf(t testing.TB, cn string, usage x509.KeyUsage, useEC bool) Lea
 // LeafSubject issues a non-repudiation certificate with the given subject.
 func (p *PKI) LeafSubject(t testing.TB, subject pkix.Name) Leaf {
 	t.Helper()
+	return p.LeafUntil(t, subject, time.Now().Add(48*time.Hour))
+}
+
+// LeafUntil issues a non-repudiation certificate with the given subject that
+// expires at notAfter.
+func (p *PKI) LeafUntil(t testing.TB, subject pkix.Name, notAfter time.Time) Leaf {
+	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	tpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()), Subject: subject,
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(48 * time.Hour), KeyUsage: x509.KeyUsageContentCommitment,
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: notAfter, KeyUsage: x509.KeyUsageContentCommitment,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, p.interCert, key.Public(), p.interKey)
 	if err != nil {

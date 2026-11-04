@@ -40,7 +40,7 @@ func TestEmbeddedAssetsAreComplete(t *testing.T) {
 
 func TestServesPagesWithStrictHeaders(t *testing.T) {
 	h := Handler()
-	for _, p := range []string{"/", "/explorer.html", "/pending.html", "/pending.js", "/site.css", "/nav.js", "/explorer.js", "/app.js"} {
+	for _, p := range []string{"/", "/explorer.html", "/pending.html", "/pending.js", "/site.css", "/nav.js", "/explorer.js", "/app.js", "/validator.html", "/validator.js", "/sign.js"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
 		if rec.Code != http.StatusOK {
@@ -51,7 +51,7 @@ func TestServesPagesWithStrictHeaders(t *testing.T) {
 		}
 	}
 	// Pages must not use inline scripts or styles: the CSP would block them.
-	for _, p := range []string{"index.html", "explorer.html", "pending.html"} {
+	for _, p := range []string{"index.html", "explorer.html", "pending.html", "validator.html"} {
 		sub, _ := fs.Sub(content, "static")
 		raw, _ := fs.ReadFile(sub, p)
 		if regexp.MustCompile(`<script(?:\s[^>]*)?>[^<]|\sstyle=|\son[a-z]+=`).Match(raw) {
@@ -67,7 +67,7 @@ func TestNavAddsTheSourceLink(t *testing.T) {
 	if !strings.Contains(string(raw), "https://github.com/ivoras/eidchain") || !strings.Contains(string(raw), "addSourceLink();") {
 		t.Fatal("nav.js does not add the source link")
 	}
-	for _, p := range []string{"index.html", "explorer.html", "pending.html"} {
+	for _, p := range []string{"index.html", "explorer.html", "pending.html", "validator.html"} {
 		page, _ := fs.ReadFile(sub, p)
 		if !strings.Contains(string(page), `src="nav.js"`) {
 			t.Errorf("%s does not load nav.js", p)

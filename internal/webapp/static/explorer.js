@@ -216,18 +216,22 @@ async function viewMessages(before) {
 
 async function viewAuthorities(highlight) {
   const a = await api("explorer/authorities");
-  a.history ??= []; a.pending ??= []; a.canSign ??= [];
+  a.history ??= []; a.pending ??= []; a.canSign ??= []; a.candidates ??= []; a.validators ??= {};
   document.title = "eidchain – authorities";
   const mine = new Set(a.canSign);
   const row = (id, i) => [
     String(i + 1),
     h("span", { class: highlight === id ? "badge pending" : "" }, keyLink(id)),
+    a.validators[id] ?? "",
     mine.has(id) ? h("span", { class: "badge good" }, "key held by this node") : "",
   ];
   show(
     heading("explorer", "Authorities.", `Blocks are signed by one of ${a.current.length} keys. A key may not sign again within ${a.window} block${a.window === 1 ? "" : "s"} of its last one, and changing the keys needs ${a.quorum} approval${a.quorum === 1 ? "" : "s"}.`),
     h("div", { class: "stats" }, stat("authorities", a.current.length), stat("rotation quorum", a.quorum), stat("rotations so far", a.seq), stat("signer cooldown", `${a.window} block${a.window === 1 ? "" : "s"}`)),
-    h("div", { class: "card" }, h("h2", {}, "Current keys"), table(["#", "Key id", ""], a.current.map(row))),
+    h("div", { class: "card" }, h("h2", {}, "Current keys"), table(["#", "Key id", "Registered by", ""], a.current.map(row))),
+    a.candidates.length ? h("div", { class: "card" }, h("h2", {}, "Candidates"),
+      h("p", { class: "small" }, `Registered with an eID card, or idle for ${a.idleBlocks} blocks. They may sign blocks, and count as authorities from the first block they sign.`),
+      table(["#", "Key id", "Registered by", ""], a.candidates.map(row))) : null,
     h("div", { class: "card" }, h("h2", {}, "Rotation history"),
       a.history.length
         ? table(["Block", "Time", "Change", "Approved by"], a.history.map((e) => [
