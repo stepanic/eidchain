@@ -35,13 +35,14 @@ import (
 // Peers named by the operator (--peer, config.json) are always trusted and may be
 // private; they are not shared with others unless they are public.
 const (
-	maxLearnedPeers = 32
-	maxPeersPerHost = 2 // learned peers on one host, so one server cannot fill the book
-	maxSharedPeers  = 20
-	maxPeerFailures = 6                // consecutive failed syncs before a learned peer is dropped
-	reannounceEvery = 30 * time.Minute // how often to repeat our announcement to a peer
-	announcePerMin  = 20               // announcements accepted per minute, in total
-	rejectedMemory  = 10 * time.Minute // how long a failed candidate is not retried
+	maxLearnedPeers    = 32
+	maxPeersPerHost    = 2 // learned peers on one host, so one server cannot fill the book
+	maxSharedPeers     = 20
+	maxPeerFailures    = 6                // consecutive failed syncs before a learned peer is dropped
+	reannounceEvery    = 30 * time.Minute // how often to repeat our announcement to a peer
+	retryAnnounceAfter = 2 * time.Minute  // after a failed announcement
+	announcePerMin     = 20               // announcements accepted per minute, in total
+	rejectedMemory     = 10 * time.Minute // how long a failed candidate is not retried
 )
 
 type learnedPeer struct {
@@ -326,9 +327,15 @@ func (n *Node) exchange(ctx context.Context, p *remote.Client) {
 			if err != nil {
 				log.Printf("peer %s: announcing %s failed: %v", p.Base, n.selfURL, err)
 			}
-			// Remembered either way, so a refusal is not retried every round.
+			// Remembered either way, so a refusal is not retried every round. A
+			// failure is retried sooner: at install time the node is often up
+			// before its own tunnel, and the peer then cannot reach it back.
+			at := time.Now()
+			if err != nil {
+				at = at.Add(retryAnnounceAfter - reannounceEvery)
+			}
 			n.book.mu.Lock()
-			n.book.announced[p.Base] = time.Now()
+			n.book.announced[p.Base] = at
 			n.book.mu.Unlock()
 		}
 	}

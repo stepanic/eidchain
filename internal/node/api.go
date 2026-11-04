@@ -134,6 +134,12 @@ func (n *Node) info() remote.Info {
 	for _, c := range n.store.P.Trust.Certificates() {
 		anchors = append(anchors, chain.CertName(c))
 	}
+	// Which keys sign from which node is public anyway, through the blocks they
+	// sign; stating it lets anyone draw the chain's nodes and keys.
+	var keys []string
+	for _, s := range n.signers {
+		keys = append(keys, s.ID)
+	}
 	var headTime int64
 	if b, ok := n.store.Block(head); ok {
 		headTime = b.Header.Time
@@ -149,6 +155,7 @@ func (n *Node) info() remote.Info {
 		BlockIntervalSeconds: int(n.opt.BlockInterval / time.Second),
 		NextBlockAt:          nextBoundary(time.Now(), n.opt.BlockInterval).Unix(),
 		CanProduce:           can,
+		SigningKeys:          keys,
 		Features:             n.store.P.Features,
 		StartedAt:            n.started.Unix(),
 		UptimeSeconds:        int64(time.Since(n.started) / time.Second),

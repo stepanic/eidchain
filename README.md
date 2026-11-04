@@ -505,6 +505,10 @@ rm ~/.cloudflared/cert.pem                            # controls the whole zone;
 sudo deploy/macos/install.sh install --seed DIR       # DIR: genesis.json, config.json, keys/ (first install only)
 ```
 
+**One hostname per node, plus aliases.** Peer exchange tells nodes apart by address, so each node advertises its own name (`DOMAIN`, for example `eidchain-i9.domovina.ai`). A short name for people (`eidchain.domovina.ai`) goes in `ALIASES`: the node serves it but never announces it, so it can move to another node without confusing peers. Each name needs its own `cloudflared tunnel route dns`.
+
+`scripts/chain-map.py --pdf` draws the live chain into `docs/chain-map.md` (and a PDF): the public nodes found through peer exchange, and which keys sign from which node for whom. A node names its keys in `signingKeys` of `/api/v1/info`. That is public anyway, through the blocks they sign.
+
 nginx is built from source rather than taken from Homebrew, which is unsupported on Intel Macs with macOS 26 and installs into a shared `/usr/local`. `deploy/macos/install.sh render DIR` writes every generated file to `DIR` for review. Logs are in `/opt/eidchain/logs/`. `genesis/domovina-genesis.json` is the genesis of that chain.
 
 ## Development

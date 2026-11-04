@@ -107,7 +107,7 @@ http {
 
     server {
         listen 127.0.0.1:$NGINX_PORT;
-        server_name $DOMAIN;
+        server_name $DOMAIN ${ALIASES:-};
         root $PREFIX/www;
         index index.html;
 
@@ -166,10 +166,12 @@ render_tunnel() {
 tunnel: $TUNNEL_ID
 credentials-file: $PREFIX/secrets/cloudflared/$TUNNEL_ID.json
 ingress:
-  - hostname: $DOMAIN
-    service: http://127.0.0.1:$NGINX_PORT
-  - service: http_status:404
 EOF
+  local h
+  for h in $DOMAIN ${ALIASES:-}; do
+    printf '  - hostname: %s\n    service: http://127.0.0.1:%s\n' "$h" "$NGINX_PORT"
+  done
+  echo "  - service: http_status:404"
 }
 
 # render_www DIR: the site without the card-login page, which cannot work here.
