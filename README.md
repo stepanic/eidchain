@@ -511,6 +511,20 @@ sudo deploy/macos/install.sh install --seed DIR       # DIR: genesis.json, confi
 
 nginx is built from source rather than taken from Homebrew, which is unsupported on Intel Macs with macOS 26 and installs into a shared `/usr/local`. `deploy/macos/install.sh render DIR` writes every generated file to `DIR` for review. Logs are in `/opt/eidchain/logs/`. `genesis/domovina-genesis.json` is the genesis of that chain.
 
+## Deployment on Linux and WSL (systemd + nginx + Cloudflare Tunnel)
+
+`deploy/linux/install.sh` is the same node as on macOS, on Linux: the same `/opt/eidchain` layout, ports and settings (`deploy/linux/eidchain.env`), and the same nginx and tunnel configs, which both scripts take from `deploy/tunnel-node.sh` so the limits cannot drift apart. The services are systemd units `eidchain-{node,nginx,tunnel}` under the system user `eidchain`, sandboxed so that each can write only its own directories. nginx comes from the distribution and cloudflared from Cloudflare's apt repository, whose key is checked against a pinned fingerprint. `deploy/install.sh` remains the ivoras.net host, with TLS and card login in nginx.
+
+```sh
+go build -o bin/eidchain ./cmd/eidchain               # as yourself
+sudo deploy/linux/install.sh packages                 # nginx, cloudflared
+cloudflared tunnel login                              # then create, route dns, move the .json, rm cert.pem as on macOS
+sudo deploy/linux/install.sh install --seed DIR       # first install only
+journalctl -u 'eidchain-*' -f                         # logs
+```
+
+**On WSL** the units run in the distro's systemd (`[boot] systemd=true` in `/etc/wsl.conf`), but WSL itself starts only when something runs `wsl.exe` and stops when the last one exits. `deploy/wsl/keep-alive.ps1`, run once in an elevated PowerShell, registers a boot-time Scheduled Task that holds one `wsl.exe` open without a logon, sets `vmIdleTimeout=-1` in `.wslconfig`, and keeps a laptop on mains power from sleeping.
+
 ## Development
 
 ```sh

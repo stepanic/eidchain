@@ -23,6 +23,10 @@ The third node goes on a Lenovo running Windows 11 and WSL2 (Ubuntu 26.04, WSL 3
 - **In WSL (recommended).** `/etc/wsl.conf` already has `systemd=true`, so the work is a Linux counterpart of `deploy/macos/install.sh`: systemd units instead of LaunchDaemons, nginx and cloudflared from apt, the same `eidchain.env`, ports 8095/8096. `deploy/install.sh` doesn't fit, because it is the ivoras.net host (`/srv/eidchain`, `User=ivoras`). The risk is lifecycle. WSL doesn't start at Windows boot and can stop when no terminal is open. That needs a boot-time Scheduled Task that keeps the distro alive (e.g. `wsl.exe -d Ubuntu -- sleep infinity`) and possibly `.wslconfig` settings. It is untested whether this survives a reboot.
 - **Native Windows services.** `eidchain.exe` cross-compiles from WSL (pure Go, no cgo). It's more reliable at boot, but everything is new: Caddy config, service registration, `join.ps1`.
 
+**Decided 2026-11-05: WSL.** `deploy/linux/install.sh` (systemd units, nginx from Ubuntu, cloudflared from Cloudflare's apt repo, the nginx and tunnel configs shared with macOS through `deploy/tunnel-node.sh`) and `deploy/wsl/keep-alive.ps1` (boot-time Scheduled Task as S4U holding `wsl.exe -d Ubuntu --exec /bin/sleep infinity`, repeated every 5 minutes with IgnoreNew; `vmIdleTimeout=-1`; no sleep, no hibernation and lid does nothing on AC). Node key `1b646745…`, seed in `~/eidchain-data`. Whether it survives a reboot with nobody logged on is still to be checked.
+
+The longer-term answer for people who aren't server admins is a desktop app, not either of these: [A node as a desktop app](2026-11-05-one-click-desktop-node.md).
+
 Both ways need a person: sudo or an admin prompt, `cloudflared tunnel login` while someone is at the screen (delete `cert.pem` afterwards), and the card signature on `validator.html`. A laptop also has to be kept from sleeping. Peers: configure i9 and mini on the Lenovo. They learn the Lenovo from its announcement.
 
 ## 20+ machines: one person's card gives one vote

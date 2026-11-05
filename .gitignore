@@ -16,8 +16,9 @@ id_rsa*
 id_ecdsa*
 id_ed25519*
 .env
-# Host settings for deploy/macos (names this host's tunnel)
+# Host settings for deploy/macos and deploy/linux (name the host's tunnel)
 /deploy/macos/eidchain.env
+/deploy/linux/eidchain.env
 
 # Local scratch and editor files
 *.test

@@ -61,6 +61,7 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
 - [ ] Back up the 3 genesis keys offline. Later, remove them by rotation once enough eID validators are counted.
-- [ ] Third node on Windows (`deploy/windows/join.ps1`), plan in the Windows/hardware doc.
+- [ ] Third node on the Lenovo in WSL (`deploy/linux/install.sh`, `deploy/wsl/keep-alive.ps1`), key `1b646745…`. See the Windows/hardware doc.
+- [ ] Desktop app for ordinary users, starting with pulling pending payloads on sync: [A node as a desktop app](2026-11-05-one-click-desktop-node.md).
 - [ ] PR to ivoras/eidchain with `authority-changes` and `eid-validators`, after the Mac Mini test.
 - [ ] Point 3 of the original plan (BFT finality) and peer bootstrap aren't started.
