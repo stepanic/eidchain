@@ -56,7 +56,7 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - [x] i9 advertises `eidchain-i9.domovina.ai` with the short name as alias, peer `eidchain-mini` configured. Both nodes report `signingKeys`; the hints only name the machines now.
 - [x] Alias fix deployed on both nodes (16:52 i9, 16:54 Mac Mini): each lists only the other, under its own name.
 - [x] The two keys count as one voter: the Mac Mini did not sign block 5 while `69007f4b` was in the window.
-- [ ] `0b26a5a7` signs its first block and becomes active. Needs a message for block 6 and another for block 7 (separate slots), then a won hash tie. See the explanation above.
+- [ ] `0b26a5a7` signs its first block and becomes active. Needs a message for block 6 and another for block 7 (separate slots), then a won hash tie. See the explanation above. Block 6 (2026-11-05 20:30 UTC, `c9201b4e…`) was signed by genesis key `ec820b5b`, the first card signature from Windows (Brave, fork Web eID). So the next message gives the Mac Mini its first chance, at block 7.
 - [x] `join.sh`: `LISTEN`, default `127.0.0.1:8097`, checked before the build.
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
