@@ -43,4 +43,5 @@ The defaults and the reasons are in `scripts/release-macos-italk.sh` in stepanic
 ## Related documents
 
 - [eidchain.domovina.ai and eID validators](2026-11-04-eidchain-domovina-and-eid-validators.md)
+- [Web eID for Windows, built from WSL](2026-11-05-web-eid-windows-build-from-wsl.md): the ATR blocker isn't macOS-specific, so Windows needs the fork too.
 - [Croatian eOI over NFC](2026-11-04-croatian-eoi-nfc-pace.md): a phone can reach the signing application over NFC with PACE-CAN (tested on an iPhone).
