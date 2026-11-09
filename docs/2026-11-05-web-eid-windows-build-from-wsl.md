@@ -34,7 +34,7 @@ The MSI needs WiX 7 and .NET, so a dev build is registered by hand. Copy `eu.web
 The browser extension is the official one from the store. The fork changes only the native app. The MSI installs the extension the way Chromium installs any external extension, so a registry value does the same without it. Each key below gets an `update_url` value, and the browser offers to enable the extension on its next start:
 
 - `HKCU\Software\Google\Chrome\Extensions\ncibgoaomkmdpilpocfeponihegamlic` → `https://clients2.google.com/service/update2/crx`
-- `HKCU\Software\BraveSoftware\Brave-Browser\Extensions\ncibgoaomkmdpilpocfeponihegamlic` → the same URL. Brave takes the Chrome Web Store build, and the MSI doesn't cover Brave.
+- `HKCU\Software\BraveSoftware\Brave-Browser\Extensions\ncibgoaomkmdpilpocfeponihegamlic` → the same URL. Brave takes the Chrome Web Store build. Upstream's MSI doesn't cover Brave, but the fork's does.
 - `HKCU\Software\Microsoft\Edge\Extensions\gnmckgbandlkacikdndelhfghdejfido` → `https://edge.microsoft.com/extensionwebstorebase/v1/crx`
 
 The MSI writes these keys and the native host keys under HKLM, for all users. HKCU needs no admin rights, which is all a single-user dev build needs. To get logs, set `HKCU\SOFTWARE\RIA\web-eid` `logging` to `"true"`. The log is `%LOCALAPPDATA%\RIA\web-eid\web-eid.log`.
@@ -42,5 +42,5 @@ The MSI writes these keys and the native host keys under HKLM, for all users. HK
 ## Open
 
 - Chrome, Edge and Firefox with this build. Only Brave has signed so far.
-- A Windows installer (MSI) and code signing. Until then, every machine needs the manual registration. The releases have only macOS DMGs (`v2.11.0-hr1`, `-hr2`). An unsigned MSI works, but SmartScreen warns and UAC shows "Unknown publisher". `build.ps1 -sign "<CN>"` signs `web-eid.exe` and the MSI. Options, still to decide: Azure Trusted Signing for ITalk d.o.o. (about $10 a month, no token, fits CI, if the company passes identity checks) or an OV certificate on a hardware token or cloud HSM. EV no longer skips SmartScreen and isn't worth it. Neither the ITalk Apple Developer ID nor the eOI signing certificate works: the eOI certificate is for non-repudiation and has no code signing EKU.
+- A Windows installer (MSI) and code signing: see [the signed MSI doc](2026-11-09-web-eid-windows-msi-signing.md). Neither the ITalk Apple Developer ID nor the eOI signing certificate can sign Windows code. The eOI certificate is for non-repudiation and has no code signing EKU.
 - `deploy/windows/join.ps1`, see [the Windows node plan](2026-11-04-windows-node-and-node-hardware.md).
