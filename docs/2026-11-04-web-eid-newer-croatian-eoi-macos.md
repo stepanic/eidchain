@@ -2,7 +2,7 @@
 
 Status on 2026-11-04. Official Web eID (app 2.10, extension 2.5) can't sign with the newer Croatian eOI, in any browser. A patched, ITalk-signed build fixes it until upstream ships the change.
 
-- Upstream fix: [web-eid/libelectronic-id#176](https://github.com/web-eid/libelectronic-id/pull/176) (fork commit [`513492b`](https://github.com/stepanic/libelectronic-id/commit/513492bc4896eca8fff95b1afeea26e6c28cddb1))
+- Upstream fix: [web-eid/libelectronic-id#178](https://github.com/web-eid/libelectronic-id/pull/178), which replaced #176 on 2026-11-09 so that the unrelated MSVC destructor fix could go separately as [#177](https://github.com/web-eid/libelectronic-id/pull/177). #176 came from the fork's `main`, so every push there landed in it. Upstream PRs now come from topic branches, while `main` stays what the web-eid-app fork's submodule points at (fork commit [`513492b`](https://github.com/stepanic/libelectronic-id/commit/513492bc4896eca8fff95b1afeea26e6c28cddb1))
 - Signed DMG, universal: [stepanic/web-eid-app v2.11.0-hr2](https://github.com/stepanic/web-eid-app/releases/tag/v2.11.0-hr2). It's built by `scripts/release-macos-italk.sh` in that fork.
 - Report: [ivoras/eidchain#1](https://github.com/ivoras/eidchain/issues/1). Block 6 of the live chain holds the first message signed with this card.
 
@@ -38,7 +38,7 @@ The defaults and the reasons are in `scripts/release-macos-italk.sh` in stepanic
 
 - Not yet tested on a real Intel Mac (the hr2 x86_64 build was only run under Rosetta).
 - PIN2 signing was tested with the arm64 build of the same code (hr1 and a local build), not with hr2.
-- Once #176 lands in an official Web eID release, users should reinstall the official DMG and the fork can go.
+- Once #178 lands in an official Web eID release, users should reinstall the official DMG and the fork can go.
 
 ## Related documents
 
