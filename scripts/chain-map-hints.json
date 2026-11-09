@@ -1,4 +1,5 @@
 {
   "https://eidchain-i9.domovina.ai/chain": {"host": "i9.local"},
-  "https://eidchain-mini.domovina.ai/chain": {"host": "Mac Mini (ffhr.local)"}
+  "https://eidchain-mini.domovina.ai/chain": {"host": "Mac Mini (ffhr.local)"},
+  "https://eidchain-lenovo.domovina.ai/chain": {"host": "Lenovo (Windows 11, WSL2)"}
 }

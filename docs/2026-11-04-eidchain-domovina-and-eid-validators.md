@@ -12,7 +12,7 @@ Related: [Web eID and the newer Croatian eOI on macOS](2026-11-04-web-eid-newer-
 - Voters after block 4: N=4 (3 genesis keys + Matija), window 2, rotation quorum 3. The genesis keys still hold the majority from one machine.
 - Block 5 (17:00) is a card-signed message, signed by genesis key `20a17442` on i9. The Mac Mini had the message too and did not cut: Matija's voter was still in the window from block 4, which shows the two keys counting as one voter.
 - **Why the Mac Mini key rarely gets to sign.** i9 holds 3 genesis keys and Matija's first key, so with a window of 2 it always has an eligible key and cuts every block. The Mac Mini cuts only when Matija's voter has left the window. At the earliest that is block 7, after a non-Matija block 6. Both nodes then cut at the same boundary, and the lowest hash wins, so the Mac Mini has about a 50% chance. Every block needs a pending message, which means a card signature, so a test takes two messages in two separate 10-minute slots, and may need repeating. This goes away once the genesis keys are rotated out.
-- Two public nodes: i9.local (`eidchain-i9.domovina.ai`, also serving the short `eidchain.domovina.ai` as an alias) and the Mac Mini ffhr.local (`eidchain-mini.domovina.ai`, tunnel `eidchain-mini` `1435a18d…`, same `/opt/eidchain` layout and uid 471).
+- Three public nodes, all peers of each other: i9.local (`eidchain-i9.domovina.ai`, also serving the short `eidchain.domovina.ai` as an alias) and the Mac Mini ffhr.local (`eidchain-mini.domovina.ai`, tunnel `eidchain-mini` `1435a18d…`, same `/opt/eidchain` layout and uid 471), and the Lenovo in WSL2 (`eidchain-lenovo.domovina.ai`, tunnel `eidchain-lenovo` `c9f00f7d…`, systemd units `eidchain-{node,nginx,tunnel}` as system user `eidchain`, the same `/opt/eidchain` layout, since 2026-11-09).
 - `python3 -I scripts/chain-map.py --pdf` (on i9 with `SSL_CERT_FILE=/etc/ssl/cert.pem`: the python.org build has no CA certificates) draws the current nodes and keys into `docs/chain-map.md`.
 
 ```mermaid
@@ -20,10 +20,14 @@ flowchart LR
   B[browser + Web eID] -->|HTTPS| CF[Cloudflare]
   CF -->|tunnel eidchain 7b43ab17…| CFD[cloudflared<br/>metrics 127.0.0.1:20242]
   CFD --> NG[nginx 127.0.0.1:8096<br/>rate limit, body caps]
-  NG --> N[eidchain node 127.0.0.1:8095]
-  CF -->|tunnel eidchain-mini 1435a18d…| M[Mac Mini: cloudflared, nginx, node<br/>same ports as i9]
-  M -->|peer: eidchain-i9.domovina.ai| CF
+  NG --> N[i9.local: eidchain node 127.0.0.1:8095<br/>3 genesis keys + 69007f4b]
+  CF -->|tunnel eidchain-mini 1435a18d…| M[Mac Mini: cloudflared, nginx, node<br/>same ports as i9, key 0b26a5a7]
+  CF -->|tunnel eidchain-lenovo c9f00f7d…| L[Lenovo, WSL2: systemd units<br/>cloudflared, nginx, node, key 1b646745]
+  M -->|peers: i9, Lenovo| CF
+  L -->|peers: i9, Mini| CF
 ```
+
+**Today the chain is spread over machines, not over people.** All three nodes run a key of the same person (MATIJA STEPANIĆ, one eID card), so his keys are one vote, and the other three votes are the genesis keys, all on i9. i9 therefore holds keys of all N=4 votes (the 3 genesis keys and Matija's first key `69007f4b`) and can keep the chain going alone. The Mac Mini and the Lenovo add places the chain survives a machine loss from, not say. That follows from the genesis, which put the 3 founding keys on one host. More votes come from more people registering with their own cards, after which the genesis keys can be rotated out. The live picture is `docs/chain-map.md`.
 
 On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovina.eidchain.{node,nginx,tunnel}` as user `_eidchain` (uid 471). The Gnosis node shares the machine, with its own tunnel `acutis` and metrics on 20241. A backup of the seed (genesis, config, the 3 genesis keys) is in `~/eidchain-domovina/seed/`. It should go to offline storage and then be deleted from there.
 
@@ -61,7 +65,10 @@ On i9.local everything lives in `/opt/eidchain`, run by LaunchDaemons `ai.domovi
 - [ ] Test `validator retire` and renewal with a real card. So far only unit tests cover them.
 - [ ] Revocation isn't noticed (OCSP isn't in consensus). An expired certificate is.
 - [ ] Back up the 3 genesis keys offline. Later, remove them by rotation once enough eID validators are counted.
-- [ ] Third node on the Lenovo in WSL (`deploy/linux/install.sh`, `deploy/wsl/keep-alive.ps1`), key `1b646745…`. See the Windows/hardware doc.
+- [x] Third node on the Lenovo in WSL (`deploy/linux/install.sh`), public since 2026-11-09 09:20, synced at height 6 and accepted as a peer by i9 and the Mac Mini on the 2-minute announcement retry.
+- [x] Key `1b646745…` registered with Matija's eOI (block 7, 2026-11-09 09:40, cut by genesis key `42a13b2a`).
+- [ ] `1b646745` signs its first block and becomes active. Block 8 (09:50) went to `69007f4b` on i9, so Matija's voter is in the window for block 9. Same race as the Mac Mini's, above.
+- [ ] Lenovo survives a Windows reboot with nobody logged on (`deploy/wsl/keep-alive.ps1`).
 - [ ] Desktop app for ordinary users, starting with pulling pending payloads on sync: [A node as a desktop app](2026-11-05-one-click-desktop-node.md).
 - [ ] PR to ivoras/eidchain with `authority-changes` and `eid-validators`, after the Mac Mini test.
 - [ ] Point 3 of the original plan (BFT finality) and peer bootstrap aren't started.

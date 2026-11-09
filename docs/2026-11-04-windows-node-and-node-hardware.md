@@ -25,6 +25,8 @@ The third node goes on a Lenovo running Windows 11 and WSL2 (Ubuntu 26.04, WSL 3
 
 **Decided 2026-11-05: WSL.** `deploy/linux/install.sh` (systemd units, nginx from Ubuntu, cloudflared from Cloudflare's apt repo, the nginx and tunnel configs shared with macOS through `deploy/tunnel-node.sh`) and `deploy/wsl/keep-alive.ps1` (boot-time Scheduled Task as S4U holding `wsl.exe -d Ubuntu --exec /bin/sleep infinity`, repeated every 5 minutes with IgnoreNew; `vmIdleTimeout=-1`; no sleep, no hibernation and lid does nothing on AC). Node key `1b646745…`, seed in `~/eidchain-data`. Whether it survives a reboot with nobody logged on is still to be checked.
 
+**Live 2026-11-09.** Steps that worked, in order: `sudo deploy/linux/install.sh packages`; `cloudflared tunnel login`; `cloudflared tunnel create eidchain-lenovo` (`c9f00f7d…`) and `route dns` to `eidchain-lenovo.domovina.ai`; `TUNNEL_ID` in `eidchain.env`; delete `cert.pem`; move the `.json` to `/opt/eidchain/secrets/cloudflared/`; `sudo deploy/linux/install.sh install --seed ~/eidchain-data`; delete `~/eidchain-data/keys`. Then the card signature of the `registration.json` made on 2026-11-05 on `validator.html` (block 7). The first announcement failed with 1033, as expected, and the retry two minutes later went through.
+
 The longer-term answer for people who aren't server admins is a desktop app, not either of these: [A node as a desktop app](2026-11-05-one-click-desktop-node.md).
 
 Both ways need a person: sudo or an admin prompt, `cloudflared tunnel login` while someone is at the screen (delete `cert.pem` afterwards), and the card signature on `validator.html`. A laptop also has to be kept from sleeping. Peers: configure i9 and mini on the Lenovo. They learn the Lenovo from its announcement.
